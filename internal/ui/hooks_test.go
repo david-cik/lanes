@@ -275,3 +275,18 @@ func stateRecord(id, pane string) state.Record {
 func slicesContainsID(rs []state.Record, id string) bool {
 	return slices.ContainsFunc(rs, func(r state.Record) bool { return r.ID == id })
 }
+
+func TestActivityLogKeepsLast20(t *testing.T) {
+	m, _, _ := hookModel(t)
+	for i := range 25 {
+		m.Update(hookMsg(hook.Event{ID: i, Agent: "r1", Tool: "claude", Event: "PreToolUse",
+			Payload: []byte(`{"tool_name":"Bash","tool_input":{"command":"step ` + string(rune('a'+i)) + `"}}`)}))
+	}
+	out := permission(m, 100, "r1")
+	m.Update(key("a"))
+	m.Update(key("y"))
+	log := m.hooks["r1"].activity
+	if len(log) != 20 || log[len(log)-1].text != "you allowed it" || log[len(log)-2].text != "asked: Bash: date > probe.txt" {
+		t.Fatalf("log %+v (reply %q)", log, *out)
+	}
+}

@@ -115,3 +115,20 @@ func TestHookSettings(t *testing.T) {
 		t.Fatalf("argv lacks --settings: %q", argv)
 	}
 }
+
+func TestActivityLines(t *testing.T) {
+	a := New()
+	cases := map[string][2]string{
+		"pre":    {"PreToolUse", `{"tool_name":"Edit","tool_input":{"file_path":"internal/x.go","old_string":"a"}}`},
+		"prompt": {"UserPromptSubmit", `{"prompt":"fix the\nlogin bug"}`},
+		"stop":   {"Stop", `{}`},
+		"post":   {"PostToolUse", `{"tool_name":"Edit"}`},
+	}
+	want := map[string]string{"pre": "Edit: internal/x.go", "prompt": "prompt: fix the login bug", "stop": "turn finished", "post": ""}
+	for name, c := range cases {
+		ev, _ := a.ParseHook(c[0], []byte(c[1]))
+		if ev.Activity != want[name] {
+			t.Errorf("%s: %q, want %q", name, ev.Activity, want[name])
+		}
+	}
+}

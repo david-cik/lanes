@@ -21,10 +21,28 @@ type (
 
 // hookState is what hooks have told lanes about one launched agent.
 type hookState struct {
-	status  agent.Status
-	since   time.Time
-	pending *pending
-	trust   bool // the folder-trust prompt is on screen (hooks don't fire before it)
+	status   agent.Status
+	since    time.Time
+	pending  *pending
+	trust    bool       // the folder-trust prompt is on screen (hooks don't fire before it)
+	activity []activity // newest last, at most activityMax
+}
+
+type activity struct {
+	at   time.Time
+	text string
+}
+
+const activityMax = 20
+
+func (st *hookState) log(at time.Time, text string) {
+	if text == "" {
+		return
+	}
+	st.activity = append(st.activity, activity{at, text})
+	if n := len(st.activity); n > activityMax {
+		st.activity = st.activity[n-activityMax:]
+	}
 }
 
 type pending struct {
@@ -84,6 +102,7 @@ func (m *Model) hook(ev hook.Event) tea.Cmd {
 	if he.Status != "" && he.Status != st.status {
 		st.status, st.since = he.Status, m.now()
 	}
+	st.log(m.now(), he.Activity)
 	var cmd tea.Cmd
 	if he.Request != nil && ev.Reply != nil {
 		st.pending = &pending{id: ev.ID, tool: ev.Tool, req: *he.Request, reply: ev.Reply, at: m.now()}
@@ -306,6 +325,16 @@ func (m *Model) decide(id string, p *pending, d agent.Decision) tea.Cmd {
 	}
 	st.pending = nil
 	st.status, st.since = agent.Working, m.now()
+	switch {
+	case d.Behavior == "deny" && d.Message != "":
+		st.log(m.now(), "you denied: "+d.Message)
+	case d.Behavior == "deny":
+		st.log(m.now(), "you denied it")
+	case d.Save != nil:
+		st.log(m.now(), "you allowed it and saved "+d.Save.Label)
+	default:
+		st.log(m.now(), "you allowed it")
+	}
 	verb := d.Behavior + "ed"
 	if d.Behavior == "deny" {
 		verb = "denied"

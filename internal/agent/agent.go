@@ -87,8 +87,9 @@ type Hooker interface {
 }
 
 type HookEvent struct {
-	Status  Status   // "" = no change
-	Request *Request // set when the tool asks for permission
+	Status   Status   // "" = no change
+	Request  *Request // set when the tool asks for permission
+	Activity string   // one line for the activity log; "" = nothing worth logging
 }
 
 type Request struct {

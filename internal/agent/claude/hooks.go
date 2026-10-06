@@ -45,12 +45,25 @@ func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) 
 // ParseHook maps a Claude hook payload to a status and, for PermissionRequest, a request.
 func (*Adapter) ParseHook(event string, payload []byte) (agent.HookEvent, error) {
 	switch event {
-	case "UserPromptSubmit", "PreToolUse", "PostToolUse":
+	case "UserPromptSubmit":
+		var p struct {
+			Prompt string `json:"prompt"`
+		}
+		json.Unmarshal(payload, &p)
+		return agent.HookEvent{Status: agent.Working, Activity: "prompt: " + oneLine(p.Prompt)}, nil
+	case "PreToolUse":
+		var p struct {
+			Tool  string          `json:"tool_name"`
+			Input json.RawMessage `json:"tool_input"`
+		}
+		json.Unmarshal(payload, &p)
+		return agent.HookEvent{Status: agent.Working, Activity: p.Tool + ": " + summarize(p.Input)}, nil
+	case "PostToolUse":
 		return agent.HookEvent{Status: agent.Working}, nil
 	case "Stop":
-		return agent.HookEvent{Status: agent.Idle}, nil
+		return agent.HookEvent{Status: agent.Idle, Activity: "turn finished"}, nil
 	case "SessionEnd":
-		return agent.HookEvent{Status: agent.Done}, nil
+		return agent.HookEvent{Status: agent.Done, Activity: "session ended"}, nil
 	case "Notification":
 		var n struct {
 			Type string `json:"notification_type"`
@@ -76,7 +89,7 @@ func (*Adapter) ParseHook(event string, payload []byte) (agent.HookEvent, error)
 		for _, raw := range p.Suggestions {
 			req.Suggestions = append(req.Suggestions, suggestion(raw))
 		}
-		return agent.HookEvent{Status: agent.Waiting, Request: req}, nil
+		return agent.HookEvent{Status: agent.Waiting, Request: req, Activity: "asked: " + req.Tool + ": " + req.Summary}, nil
 	}
 	return agent.HookEvent{}, nil
 }
