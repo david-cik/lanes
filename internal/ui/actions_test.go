@@ -262,11 +262,12 @@ func TestAdoptForksExternalSessionInPlace(t *testing.T) {
 	if m.modal == nil || len(m.modal.items) == 0 { // not linked to a ticket: picker first
 		t.Fatalf("expected ticket picker, got %+v", m.modal)
 	}
-	m.Update(key("enter")) // ABC-1
+	_, cmd := m.Update(key("enter")) // ABC-1
+	m.Update(cmd())                  // adoptPlanMsg
 	if m.modal == nil || !m.modal.confirm || !strings.Contains(strings.Join(m.modal.lines, "\n"), "original keeps running") {
 		t.Fatalf("confirm %+v", m.modal)
 	}
-	_, cmd := m.Update(key("y"))
+	_, cmd = m.Update(key("y"))
 	m.Update(cmd()) // launchedMsg (its follow-up commands poll the pane; not needed here)
 	if !strings.Contains(strings.Join(ft.log, "|"), "new lanes-") {
 		t.Fatalf("no session started: %v", ft.log)

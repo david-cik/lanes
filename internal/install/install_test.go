@@ -114,3 +114,29 @@ func TestInvalidJSONRefused(t *testing.T) {
 		t.Fatal("accepted invalid JSON")
 	}
 }
+
+func TestRunKeepsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "dotfiles-settings.json")
+	link := filepath.Join(dir, "settings.json")
+	os.WriteFile(real, []byte(userSettings), 0o600)
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	if err := Run(link, "/opt/lanes", false, true, nil, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Lstat(link); fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("symlink replaced by a regular file")
+	}
+	if b, _ := os.ReadFile(real); !strings.Contains(string(b), claude.GlobalMarker) {
+		t.Fatal("target not updated")
+	}
+}
+
+func TestUninstallWithoutSettingsFile(t *testing.T) {
+	var out bytes.Buffer
+	if err := Run(filepath.Join(t.TempDir(), "settings.json"), "/opt/lanes", true, true, nil, &out); err != nil || !strings.Contains(out.String(), "nothing to do") {
+		t.Fatalf("err=%v out=%q", err, out.String())
+	}
+}

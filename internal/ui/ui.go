@@ -271,6 +271,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case detailMsg:
 		return m, m.gotDetail(msg)
+	case adoptPlanMsg:
+		return m, m.confirmAdopt(msg.plan, msg.name)
 	case tea.KeyPressMsg:
 		if md := m.modal; md != nil {
 			if msg.String() == "ctrl+c" {

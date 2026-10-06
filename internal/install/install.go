@@ -102,6 +102,10 @@ func hasGlobal(eventHooks gjson.Result) bool {
 // Run installs (or with uninstall, removes) lanes' global hooks in the settings file at
 // path, after showing what changes and asking unless yes. It keeps a timestamped backup.
 func Run(path, bin string, uninstall, yes bool, in io.Reader, out io.Writer) error {
+	// Edit the real file behind a symlink (dotfile managers), keeping the link intact.
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
 	before, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -109,6 +113,10 @@ func Run(path, bin string, uninstall, yes bool, in io.Reader, out io.Writer) err
 	var after []byte
 	if uninstall {
 		var n int
+		if len(strings.TrimSpace(string(before))) == 0 {
+			fmt.Fprintf(out, "No lanes hooks in %s; nothing to do.\n", path)
+			return nil
+		}
 		if after, n, err = Remove(before); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
@@ -140,7 +148,7 @@ func Run(path, bin string, uninstall, yes bool, in io.Reader, out io.Writer) err
 		}
 	}
 	if before != nil {
-		backup := fmt.Sprintf("%s.lanes-backup-%s", path, time.Now().Format("20060102-150405"))
+		backup := fmt.Sprintf("%s.lanes-backup-%s", path, time.Now().Format("20060102-150405.000000000"))
 		if err := os.WriteFile(backup, before, 0o600); err != nil {
 			return err
 		}

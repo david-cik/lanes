@@ -394,6 +394,11 @@ func (m *Model) linkSelected() tea.Cmd {
 
 // --- adopt ---
 
+type adoptPlanMsg struct {
+	plan launch.Plan
+	name string
+}
+
 // adoptSelected forks a session lanes didn't start into a lanes-managed pane, in the
 // session's own directory. The original keeps running untouched.
 func (m *Model) adoptSelected() tea.Cmd {
@@ -418,15 +423,17 @@ func (m *Model) adoptSelected() tea.Cmd {
 		return nil
 	}
 	sess := *a
+	cfg := m.opt.Config
 	adopt := func(issue tracker.Issue) tea.Cmd {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 		d := tracker.IssueDetail{Issue: issue}
 		if c, ok := m.issueDetails[issue.Key]; ok && c.err == nil {
 			d = c.detail
 		}
-		p := launch.AdoptPlan(ctx, d, sess.Cwd, sess.ID, ad, m.opt.Config)
-		return m.confirmAdopt(p, sess.Name)
+		return func() tea.Msg { // git lookups off the UI loop
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return adoptPlanMsg{launch.AdoptPlan(ctx, d, sess.Cwd, sess.ID, ad, cfg), sess.Name}
+		}
 	}
 	for _, i := range m.issues {
 		if i.Key == a.TicketKey {
