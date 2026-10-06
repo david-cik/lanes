@@ -66,7 +66,7 @@ func controlModel(t *testing.T) (*Model, *fakeTmux) {
 		Issues: []tracker.Issue{{Key: "ABC-1", Title: "fix it", Team: "Alpha", State: "Todo", StateType: "unstarted"}},
 	})
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
-	m.Update(agentsMsg{
+	snap := &fleetSnap{
 		agents: []agent.Agent{
 			{ID: "s1", Tool: "claude", Name: "one", TicketKey: "ABC-1", RecordID: "r1", Pane: "%1"},
 			{ID: "s2", Tool: "claude", Name: "two", TicketKey: "ABC-1", RecordID: "r2", Pane: "%2"},
@@ -76,8 +76,20 @@ func controlModel(t *testing.T) (*Model, *fakeTmux) {
 			{ID: "r1", Tool: "claude", TicketKey: "ABC-1", Pane: "%1"},
 			{ID: "r2", Tool: "claude", TicketKey: "ABC-1", Pane: "%2"},
 		},
-	})
+	}
+	m.opt.Fleet = snap
+	m.Update(agentsMsg{agents: snap.agents, live: snap.live})
 	return m, ft
+}
+
+// fleetSnap answers agent refreshes with a fixed snapshot tests can edit.
+type fleetSnap struct {
+	agents []agent.Agent
+	live   []state.Record
+}
+
+func (f *fleetSnap) Snapshot(context.Context) ([]agent.Agent, []state.Record, error) {
+	return append([]agent.Agent{}, f.agents...), append([]state.Record{}, f.live...), nil
 }
 
 func (m *Model) cursorTo(t *testing.T, text string) {

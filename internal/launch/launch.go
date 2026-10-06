@@ -102,13 +102,7 @@ func Render(tmpl string, vars map[string]string) string {
 	return strings.TrimSpace(strings.NewReplacer(pairs...).Replace(tmpl))
 }
 
-func git(ctx context.Context, dir string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
-	}
-	return strings.TrimSpace(string(out)), nil
-}
+var git = gitinfo.Git
 
 // Worktree makes sure path is a worktree of repo on branch, creating it from
 // origin's default branch when the branch is new. It never touches local branches

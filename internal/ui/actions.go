@@ -211,6 +211,7 @@ func (m *Model) gotDetail(msg detailMsg) tea.Cmd {
 		m.say("", msg.err)
 		return nil
 	}
+	m.issueDetails[msg.detail.Key] = msg.detail
 	repos := launch.Repos(m.opt.Config.RepoRoots)
 	if r, ok := launch.InferRepo(msg.detail, repos); ok {
 		return m.confirmLaunch(launch.NewPlan(msg.detail, r, msg.adapter, m.opt.Config))

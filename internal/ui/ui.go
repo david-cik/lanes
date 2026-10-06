@@ -82,6 +82,7 @@ type Options struct {
 	Socket  string            // where those hooks connect
 	Notify  func(text string) // tmux / OS notification; nil = bell only
 	Notice  string            // shown in the footer at start (e.g. why hooks are off)
+	Readers Readers           // git / PR / browser access for details; zero = real ones
 }
 
 type Model struct {
@@ -111,14 +112,26 @@ type Model struct {
 	agentSeen int                   // newest refresh applied; results older than it are dropped
 	launchSeq int                   // refreshes started at or before this predate the last launch
 	hooks     map[string]*hookState // by launch record ID
-	modal     *modal
+
+	details      bool // bottom half of the panel shows the selected row's details
+	detailSeq    int
+	readers      Readers
+	gitCache     map[string]cachedGit // by directory
+	prCache      map[string]cachedPR  // by directory + "\x00" + branch
+	issueDetails map[string]tracker.IssueDetail
+	modal        *modal
 
 	now func() time.Time
 }
 
 func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
-		stopping: map[string]bool{}, hooks: map[string]*hookState{}}
+		stopping: map[string]bool{}, hooks: map[string]*hookState{},
+		readers: opt.Readers, gitCache: map[string]cachedGit{}, prCache: map[string]cachedPR{},
+		issueDetails: map[string]tracker.IssueDetail{}}
+	if m.readers.Git == nil {
+		m.readers = defaultReaders()
+	}
 	m.notice = opt.Notice
 	if l, err := opt.Store.Links(); err == nil {
 		m.links = l
@@ -243,6 +256,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.hook(hook.Event(msg)), m.waitHook())
 	case trustMsg:
 		return m, m.trusted(msg)
+	case detailTick:
+		if msg.seq == m.detailSeq && m.details {
+			return m, m.fetchDetails(false)
+		}
+	case gitMsg, prMsg, issueMsg:
+		m.detailsUpdate(msg)
 	case trustGoneMsg:
 		if st := m.hooks[msg.id]; st != nil {
 			st.trust = false
@@ -275,14 +294,29 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	case "j", "down":
 		m.cursor = min(m.cursor+1, max(len(m.rows)-1, 0))
+		return m.detailsMoved()
 	case "k", "up":
 		m.cursor = max(m.cursor-1, 0)
+		return m.detailsMoved()
 	case "g", "home":
 		m.cursor = 0
+		return m.detailsMoved()
 	case "G", "end":
 		m.cursor = max(len(m.rows)-1, 0)
+		return m.detailsMoved()
+	case "d":
+		m.details = !m.details
+		if m.details {
+			return m.fetchDetails(false)
+		}
+	case "o":
+		return m.openSelected()
 	case "r":
-		return tea.Batch(m.fetchIssues(), m.fetchAgents())
+		cmds := []tea.Cmd{m.fetchIssues(), m.fetchAgents()}
+		if m.details {
+			cmds = append(cmds, m.fetchDetails(true))
+		}
+		return tea.Batch(cmds...)
 	case "u":
 		m.modal = &modal{id: "assignee", title: "Show tickets assigned to", items: m.assigneeChoices(),
 			onChoose: m.chooseAssignee}
@@ -354,9 +388,20 @@ func (m *Model) View() tea.View {
 	}
 
 	body := max(m.height-2, 1)
-	if m.modal != nil {
+	switch {
+	case m.modal != nil:
 		m.modal.view(&b, m.width, body)
-	} else {
+	case m.details:
+		boardH := body / 2
+		if boardH < 6 || body-boardH < 8 { // too short to split: details take it all
+			boardH = 0
+		}
+		if boardH > 0 {
+			m.viewBoard(&b, boardH)
+		}
+		b.WriteString(faint.Render(trunc("── details (d hides · o opens · r refreshes) "+strings.Repeat("─", m.width), m.width)) + "\n")
+		m.viewDetails(&b, body-boardH-1)
+	default:
 		m.viewBoard(&b, body)
 	}
 
@@ -374,7 +419,7 @@ func (m *Model) View() tea.View {
 	case m.opt.Tmux == nil:
 		b.WriteString(faint.Render("j/k move · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)"))
 	default:
-		b.WriteString(faint.Render("enter show · a approve · n new · s send · x stop · l link · r refresh · u assignee · q quit"))
+		b.WriteString(faint.Render("enter show · d details · a approve · n new · s send · x stop · l link · r refresh · u assignee · q quit"))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true

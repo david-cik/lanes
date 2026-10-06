@@ -299,6 +299,7 @@ func (m *Model) openApproval(id string) {
 			}
 			p.reply(nil)
 			st.pending = nil
+			st.log(m.now(), "you chose to answer in the pane")
 			if i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == id }); i >= 0 && m.opt.Tmux != nil {
 				m.focus(id, m.live[i].Pane)
 			}
@@ -327,7 +328,7 @@ func (m *Model) decide(id string, p *pending, d agent.Decision) tea.Cmd {
 	st.status, st.since = agent.Working, m.now()
 	switch {
 	case d.Behavior == "deny" && d.Message != "":
-		st.log(m.now(), "you denied: "+d.Message)
+		st.log(m.now(), "you denied: "+strings.Join(strings.Fields(d.Message), " "))
 	case d.Behavior == "deny":
 		st.log(m.now(), "you denied it")
 	case d.Save != nil:
