@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -152,6 +153,8 @@ func (fake) Command(s agent.LaunchSpec) agent.Command {
 type fakeTmux struct {
 	argv, env []string
 	opts      map[string]string
+	optErr    error
+	killed    []string
 }
 
 func (f *fakeTmux) NewSession(name, cwd string, env, argv []string) (string, error) {
@@ -160,6 +163,10 @@ func (f *fakeTmux) NewSession(name, cwd string, env, argv []string) (string, err
 }
 func (f *fakeTmux) SetOpt(pane, key, val string) error {
 	f.opts = map[string]string{pane + key: val}
+	return f.optErr
+}
+func (f *fakeTmux) KillSession(name string) error {
+	f.killed = append(f.killed, name)
 	return nil
 }
 
@@ -180,5 +187,19 @@ func TestRun(t *testing.T) {
 	}
 	if all, _ := store.All(); len(all) != 1 || all[0].ID != rec.ID {
 		t.Fatalf("saved %+v", all)
+	}
+}
+
+func TestRunKillsUntrackableSession(t *testing.T) {
+	repo := clone(t, t.TempDir(), "app", "")
+	store := state.Store{Dir: t.TempDir()}
+	tm := &fakeTmux{optErr: errors.New("no tmux")}
+	p := NewPlan(tracker.IssueDetail{Issue: tracker.Issue{Key: "ABC-6", Title: "x"}}, Repo{"app", repo}, fake{}, config.Default())
+	rec, err := Run(context.Background(), p, tm, store)
+	if err == nil || len(tm.killed) != 1 || tm.killed[0] != rec.Session() {
+		t.Fatalf("err=%v killed=%v", err, tm.killed)
+	}
+	if all, _ := store.All(); len(all) != 0 {
+		t.Fatalf("record saved for a killed session: %+v", all)
 	}
 }

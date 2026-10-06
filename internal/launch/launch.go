@@ -123,11 +123,11 @@ func Worktree(ctx context.Context, repo, branch, path string) error {
 		}
 		return nil
 	}
-	if _, err := git(ctx, repo, "fetch", "--quiet", "origin"); err != nil {
+	if _, err := git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
+		_, err := git(ctx, repo, "worktree", "add", path, branch) // works offline
 		return err
 	}
-	if _, err := git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
-		_, err := git(ctx, repo, "worktree", "add", path, branch)
+	if _, err := git(ctx, repo, "fetch", "--quiet", "origin"); err != nil {
 		return err
 	}
 	if _, err := git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+branch); err == nil {
@@ -174,6 +174,7 @@ func Check(live []state.Record, worktree, ticket string) (warning string, err er
 type Tmux interface {
 	NewSession(name, cwd string, env, argv []string) (string, error)
 	SetOpt(pane, key, val string) error
+	KillSession(name string) error
 }
 
 // Plan is a resolved launch, shown to the user before it runs.
@@ -206,10 +207,17 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 		return rec, err
 	}
 	rec.Pane = pane
+	// Without the pane tag or the record lanes could never find this agent again,
+	// so don't leave it running untracked.
 	if err := tm.SetOpt(pane, tmux.OptAgent, rec.ID); err != nil {
+		tm.KillSession(rec.Session())
 		return rec, err
 	}
-	return rec, store.Save(rec)
+	if err := store.Save(rec); err != nil {
+		tm.KillSession(rec.Session())
+		return rec, err
+	}
+	return rec, nil
 }
 
 // NewPlan renders branch, worktree, and prompt from the config templates.
