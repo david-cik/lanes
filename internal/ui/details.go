@@ -277,10 +277,10 @@ func (m *Model) agentDetails(a *agent.Agent) []string {
 	}
 
 	out = append(out, sect.Render("recent"))
-	st := m.hooks[a.RecordID]
+	st := m.hooks[hookKey(a)]
 	switch {
-	case a.RecordID == "":
-		out = append(out, faint.Render("  not started by lanes — no activity log"))
+	case a.RecordID == "" && st == nil:
+		out = append(out, faint.Render("  not started by lanes — no activity log (lanes install-hooks adds one)"))
 	case st == nil || len(st.activity) == 0:
 		out = append(out, faint.Render("  nothing yet"))
 	default:

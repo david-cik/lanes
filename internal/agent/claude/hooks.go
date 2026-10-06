@@ -24,17 +24,41 @@ var hookEvents = []struct {
 	{"SessionEnd", false, 10},
 }
 
-// HookSettings returns the inline --settings JSON that routes events to `lanes hook`.
-func HookSettings(bin string) string {
-	hooks := map[string]any{}
+// HookEntry is one settings.json hook entry (the object inside hooks.<Event>[]).
+type HookEntry struct {
+	Event string
+	JSON  []byte
+}
+
+// GlobalMarker identifies hook commands added by `lanes install-hooks`.
+const GlobalMarker = " hook --global claude "
+
+// HookEntries returns lanes' hook entry for each event. Global entries (installed into
+// the user's settings) report every session; the others are injected per launch.
+func HookEntries(bin string, global bool) []HookEntry {
+	sub := " hook claude "
+	if global {
+		sub = GlobalMarker
+	}
+	var out []HookEntry
 	for _, e := range hookEvents {
 		entry := map[string]any{"hooks": []map[string]any{{
-			"type": "command", "command": shQuote(bin) + " hook claude " + e.name, "timeout": e.timeout,
+			"type": "command", "command": shQuote(bin) + sub + e.name, "timeout": e.timeout,
 		}}}
 		if e.matcher {
 			entry["matcher"] = "*"
 		}
-		hooks[e.name] = []any{entry}
+		b, _ := json.Marshal(entry)
+		out = append(out, HookEntry{e.name, b})
+	}
+	return out
+}
+
+// HookSettings returns the inline --settings JSON that routes events to `lanes hook`.
+func HookSettings(bin string) string {
+	hooks := map[string]any{}
+	for _, e := range HookEntries(bin, false) {
+		hooks[e.Event] = []json.RawMessage{e.JSON}
 	}
 	b, _ := json.Marshal(map[string]any{"hooks": hooks})
 	return string(b)

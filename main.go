@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
@@ -22,6 +23,7 @@ import (
 	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/fleet"
 	"github.com/david-cik/lanes/internal/hook"
+	"github.com/david-cik/lanes/internal/install"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tmux"
 	"github.com/david-cik/lanes/internal/tracker/linear"
@@ -34,8 +36,15 @@ func main() {
 	// `lanes hook <tool> <event>` runs inside agent tools on every hook event: keep it
 	// fast (no config, no network) and silent on any failure.
 	if len(os.Args) > 1 && os.Args[1] == "hook" {
-		if len(os.Args) == 4 {
-			hook.Client(os.Stdin, os.Stdout, os.Getenv("LANES_SOCKET"), os.Getenv("LANES_AGENT_ID"), os.Args[2], os.Args[3])
+		socket := os.Getenv("LANES_SOCKET")
+		switch {
+		case len(os.Args) == 4:
+			hook.Client(os.Stdin, os.Stdout, socket, os.Getenv("LANES_AGENT_ID"), os.Args[2], os.Args[3], false)
+		case len(os.Args) == 5 && os.Args[2] == "--global":
+			if socket == "" {
+				socket = config.SocketPath()
+			}
+			hook.Client(os.Stdin, os.Stdout, socket, os.Getenv("LANES_AGENT_ID"), os.Args[3], os.Args[4], true)
 		}
 		return
 	}
@@ -49,8 +58,20 @@ func run() error {
 	assignee := flag.String("assignee", "", `whose tickets to show: "me", a user id, name, or email`)
 	noTmux := flag.Bool("no-tmux", false, "run outside tmux as a read-only board")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: lanes [--assignee who] [--no-tmux]\n       lanes auth logout\n")
+		fmt.Fprint(flag.CommandLine.Output(), `usage:
+  lanes [--assignee who] [--no-tmux]     the board (starts or attaches to tmux session "lanes")
+  lanes auth logout                      forget the Linear sign-in
+  lanes install-hooks [--yes] [--settings PATH]
+                                         report every Claude session to lanes (edits ~/.claude/settings.json after asking)
+  lanes uninstall-hooks [--yes] [--settings PATH]
+                                         remove exactly what install-hooks added
+
+flags:
+`)
 		flag.PrintDefaults()
+	}
+	if len(os.Args) > 1 && (os.Args[1] == "install-hooks" || os.Args[1] == "uninstall-hooks") {
+		return hooksCommand(os.Args[1] == "uninstall-hooks", os.Args[2:])
 	}
 	flag.Parse()
 
@@ -172,6 +193,25 @@ func takeOver(tm tmux.Client, panel string) (func(), error) {
 		return nil, err
 	}
 	return func() { tm.UnsetOpt(panel, tmux.OptPanel) }, nil
+}
+
+func hooksCommand(uninstall bool, args []string) error {
+	fs := flag.NewFlagSet("hooks", flag.ExitOnError)
+	yes := fs.Bool("yes", false, "don't ask for confirmation")
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		dir = config.Expand("~/.claude")
+	}
+	path := fs.String("settings", filepath.Join(dir, "settings.json"), "Claude Code settings file")
+	fs.Parse(args)
+	bin, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if !uninstall && strings.Contains(bin, "go-build") {
+		return errors.New("install-hooks needs a lanes binary that stays put (go install it); this one is a temporary `go run` build")
+	}
+	return install.Run(*path, bin, uninstall, *yes, os.Stdin, os.Stdout)
 }
 
 // notifier shows text as a tmux message on the panel's client and, if enabled, as a

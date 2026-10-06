@@ -7,6 +7,9 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/pelletier/go-toml/v2 v2.4.3
+	github.com/tidwall/gjson v1.20.0
+	github.com/tidwall/pretty v1.2.0
+	github.com/tidwall/sjson v1.2.5
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/oauth2 v0.35.0
 )
@@ -29,6 +32,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/sync v0.22.0 // indirect

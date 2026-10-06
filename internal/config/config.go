@@ -121,6 +121,12 @@ func Expand(p string) string {
 	return p
 }
 
+// SocketPath is the panel's hook socket, computed without touching the disk (the hook
+// client runs on every agent tool call and must stay cheap).
+func SocketPath() string {
+	return filepath.Join(xdg("XDG_STATE_HOME", ".local/state"), "lanes", "lanes.sock")
+}
+
 // StateDir returns $XDG_STATE_HOME/lanes (default ~/.local/state/lanes), creating it 0700.
 func StateDir() (string, error) {
 	dir := filepath.Join(xdg("XDG_STATE_HOME", ".local/state"), "lanes")

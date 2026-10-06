@@ -290,3 +290,27 @@ func TestActivityLogKeepsLast20(t *testing.T) {
 		t.Fatalf("log %+v (reply %q)", log, *out)
 	}
 }
+
+func TestExternalSessionReportsThroughGlobalHooks(t *testing.T) {
+	m, _, notes := hookModel(t)
+	out := permission(m, 1, "claude:x9") // the "outside" session, id x9
+	v := view(m)
+	if !strings.Contains(v, "⚠ claude outside waiting") || !strings.Contains(v, "Bash: date > probe.txt") || len(*notes) != 1 {
+		t.Fatalf("view:\n%s\nnotes %v", v, *notes)
+	}
+	m.Update(agentsMsg{agents: m.agents, live: m.live}) // a refresh must keep its state
+	if m.waitingCount() != 1 {
+		t.Fatal("refresh dropped the external session's request")
+	}
+	m.cursorTo(t, "outside")
+	m.Update(key("a"))
+	m.Update(key("y"))
+	if d := decisionOf(t, *out); d["behavior"] != "allow" {
+		t.Fatalf("%v", d)
+	}
+	// gone from the session list → state dropped
+	m.Update(agentsMsg{agents: m.agents[:2], live: m.live})
+	if _, ok := m.hooks["claude:x9"]; ok {
+		t.Fatal("state kept for a session that's gone")
+	}
+}

@@ -137,12 +137,33 @@ func reply(ev hook.Event, b []byte) {
 }
 
 // notify rings the terminal bell and tells the user via tmux / the OS.
-func (m *Model) notify(id, what string) tea.Cmd {
-	label := id
-	if i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == id }); i >= 0 {
-		label = m.live[i].TicketKey
+// hookKey is the id hook events use for an agent: its launch record for agents lanes
+// started, "<tool>:<session id>" for sessions reporting through global hooks.
+func hookKey(a *agent.Agent) string {
+	if a.RecordID != "" {
+		return a.RecordID
 	}
-	text := label + " needs you — " + what
+	return a.Tool + ":" + a.ID
+}
+
+// whoIs names the agent behind a hook key for messages: its ticket, else its name.
+func (m *Model) whoIs(id string) string {
+	if i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == id }); i >= 0 {
+		return m.live[i].TicketKey
+	}
+	for i := range m.agents {
+		if a := &m.agents[i]; hookKey(a) == id {
+			if a.TicketKey != "" {
+				return a.TicketKey
+			}
+			return a.Name
+		}
+	}
+	return id
+}
+
+func (m *Model) notify(id, what string) tea.Cmd {
+	text := m.whoIs(id) + " needs you — " + what
 	cmds := []tea.Cmd{tea.Raw("\a")}
 	if n := m.opt.Notify; n != nil {
 		cmds = append(cmds, func() tea.Msg { n(text); return nil })
@@ -152,8 +173,15 @@ func (m *Model) notify(id, what string) tea.Cmd {
 
 // forgetHooks drops state for agents that are gone, releasing any waiting hook.
 func (m *Model) forgetHooks() {
+	known := map[string]bool{}
+	for _, r := range m.live {
+		known[r.ID] = true
+	}
+	for i := range m.agents {
+		known[hookKey(&m.agents[i])] = true
+	}
 	for id, st := range m.hooks {
-		if !slices.ContainsFunc(m.live, func(r state.Record) bool { return r.ID == id }) {
+		if !known[id] {
 			if st.pending != nil {
 				m.release(st, "")
 			}
@@ -165,8 +193,8 @@ func (m *Model) forgetHooks() {
 // overlay applies hook status to launched agents (hooks are fresher than polling).
 func (m *Model) overlay(agents []agent.Agent) {
 	for i := range agents {
-		st := m.hooks[agents[i].RecordID]
-		if agents[i].RecordID == "" || st == nil {
+		st := m.hooks[hookKey(&agents[i])]
+		if st == nil {
 			continue
 		}
 		if st.trust {
@@ -189,9 +217,9 @@ func (m *Model) waitingCount() int {
 
 // waitingNote is the extra text on a waiting agent's row.
 func (m *Model) waitingNote(a *agent.Agent) string {
-	st := m.hooks[a.RecordID]
+	st := m.hooks[hookKey(a)]
 	switch {
-	case a.RecordID == "" || st == nil:
+	case st == nil:
 		return ""
 	case st.trust:
 		return " · answer the folder-trust prompt in the pane"
@@ -205,8 +233,8 @@ func (m *Model) waitingNote(a *agent.Agent) string {
 
 func (m *Model) approve() tea.Cmd {
 	id := ""
-	if a, ok := m.selectedAgent(); ok && m.hooks[a.RecordID] != nil && m.hooks[a.RecordID].pending != nil {
-		id = a.RecordID
+	if a, ok := m.selectedAgent(); ok && m.hooks[hookKey(a)] != nil && m.hooks[hookKey(a)].pending != nil {
+		id = hookKey(a)
 	} else {
 		var oldest time.Time
 		for rid, st := range m.hooks {
@@ -235,10 +263,7 @@ func (m *Model) openApproval(id string) {
 		return
 	}
 	p := st.pending
-	ticket := id
-	if i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == id }); i >= 0 {
-		ticket = m.live[i].TicketKey
-	}
+	ticket := m.whoIs(id)
 	lines := []string{
 		"tool:  " + p.req.Tool,
 		"input: " + p.req.Summary,

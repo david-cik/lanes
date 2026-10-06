@@ -36,13 +36,32 @@ type reply struct {
 }
 
 // Client is `lanes hook`. agentID and socket come from LANES_AGENT_ID / LANES_SOCKET.
-func Client(stdin io.Reader, stdout io.Writer, socket, agentID, tool, event string) {
-	if socket == "" || agentID == "" {
+// With global set (hooks from `lanes install-hooks`), the agent is "<tool>:<session_id>"
+// from the payload, and agents lanes launched are skipped: they report through their
+// own injected hooks, so answering twice would double every event.
+func Client(stdin io.Reader, stdout io.Writer, socket, agentID, tool, event string, global bool) {
+	if global {
+		if agentID != "" {
+			return
+		}
+	} else if agentID == "" {
+		return
+	}
+	if socket == "" {
 		return
 	}
 	payload, _ := io.ReadAll(io.LimitReader(stdin, maxPayload))
 	if !json.Valid(payload) {
 		payload = []byte("null")
+	}
+	if global {
+		var p struct {
+			SessionID string `json:"session_id"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.SessionID == "" {
+			return
+		}
+		agentID = tool + ":" + p.SessionID
 	}
 	conn, err := net.DialTimeout("unix", socket, 500*time.Millisecond)
 	if err != nil {

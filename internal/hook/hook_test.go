@@ -39,7 +39,7 @@ func TestStatusEventIsFireAndForget(t *testing.T) {
 	}
 	defer s.Close()
 	var out bytes.Buffer
-	Client(strings.NewReader(`{"x":1}`), &out, path, "a1", "claude", "Stop")
+	Client(strings.NewReader(`{"x":1}`), &out, path, "a1", "claude", "Stop", false)
 	ev := next(t, s)
 	if ev.Agent != "a1" || ev.Event != "Stop" || string(ev.Payload) != `{"x":1}` || ev.Reply != nil || out.Len() != 0 {
 		t.Fatalf("ev %+v out %q", ev, out.String())
@@ -55,7 +55,10 @@ func TestBlockingRoundTrip(t *testing.T) {
 	defer s.Close()
 	var out bytes.Buffer
 	done := make(chan struct{})
-	go func() { Client(strings.NewReader(`{}`), &out, path, "a1", "claude", "PermissionRequest"); close(done) }()
+	go func() {
+		Client(strings.NewReader(`{}`), &out, path, "a1", "claude", "PermissionRequest", false)
+		close(done)
+	}()
 	ev := next(t, s)
 	ev.Reply([]byte(`{"decision":"x"}`))
 	ev.Reply([]byte(`ignored`))
@@ -70,7 +73,10 @@ func TestPanelClosingMidWaitPrintsNothing(t *testing.T) {
 	s, _ := Listen(path)
 	var out bytes.Buffer
 	done := make(chan struct{})
-	go func() { Client(strings.NewReader(`{}`), &out, path, "a1", "claude", "PermissionRequest"); close(done) }()
+	go func() {
+		Client(strings.NewReader(`{}`), &out, path, "a1", "claude", "PermissionRequest", false)
+		close(done)
+	}()
 	next(t, s)
 	s.Close()
 	select {
@@ -90,7 +96,7 @@ func TestClientHangupReportsClosed(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		// a client that gives up: send, then close without waiting
-		Client(strings.NewReader(`{}`), &bytes.Buffer{}, path, "a1", "claude", "Stop")
+		Client(strings.NewReader(`{}`), &bytes.Buffer{}, path, "a1", "claude", "Stop", false)
 		close(done)
 	}()
 	next(t, s)
@@ -106,8 +112,8 @@ func TestClientHangupReportsClosed(t *testing.T) {
 
 func TestNoPanelIsSilent(t *testing.T) {
 	var out bytes.Buffer
-	Client(strings.NewReader(`{}`), &out, filepath.Join(t.TempDir(), "none"), "a1", "claude", "PermissionRequest")
-	Client(strings.NewReader(`{}`), &out, "", "a1", "claude", "PermissionRequest")
+	Client(strings.NewReader(`{}`), &out, filepath.Join(t.TempDir(), "none"), "a1", "claude", "PermissionRequest", false)
+	Client(strings.NewReader(`{}`), &out, "", "a1", "claude", "PermissionRequest", false)
 	if out.Len() != 0 {
 		t.Fatal(out.String())
 	}
@@ -136,4 +142,23 @@ func rawBlocking(t *testing.T, path string) interface{ Close() error } {
 	}
 	c.Write([]byte(`{"agent":"a2","tool":"claude","event":"PermissionRequest","payload":{}}` + "\n"))
 	return c
+}
+
+func TestGlobalClient(t *testing.T) {
+	path := sock(t)
+	s, _ := Listen(path)
+	defer s.Close()
+	// a launched agent (LANES_AGENT_ID set) is skipped by global hooks
+	Client(strings.NewReader(`{"session_id":"s1"}`), &bytes.Buffer{}, path, "r1", "claude", "Stop", true)
+	// no session id: nothing to report
+	Client(strings.NewReader(`{}`), &bytes.Buffer{}, path, "", "claude", "Stop", true)
+	Client(strings.NewReader(`{"session_id":"s9"}`), &bytes.Buffer{}, path, "", "claude", "Stop", true)
+	if ev := next(t, s); ev.Agent != "claude:s9" {
+		t.Fatalf("ev %+v", ev)
+	}
+	select {
+	case ev := <-s.Events():
+		t.Fatalf("unexpected extra event %+v", ev)
+	case <-time.After(200 * time.Millisecond):
+	}
 }
