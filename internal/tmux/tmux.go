@@ -76,7 +76,7 @@ func (c Client) Panes() ([]Pane, error) {
 		if len(f) != 5 {
 			continue
 		}
-		panes = append(panes, Pane{ID: f[0], Session: f[1], Agent: f[2], Placeholder: f[3] != "", Dead: f[4] == "1"})
+		panes = append(panes, Pane{ID: f[0], Session: f[1], Agent: f[2], Placeholder: f[3] == "1", Dead: f[4] == "1"})
 	}
 	return panes, nil
 }
