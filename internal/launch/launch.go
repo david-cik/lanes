@@ -15,6 +15,7 @@ import (
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/config"
+	"github.com/david-cik/lanes/internal/gitinfo"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tmux"
 	"github.com/david-cik/lanes/internal/tracker"
@@ -134,24 +135,12 @@ func Worktree(ctx context.Context, repo, branch, path string) error {
 		_, err := git(ctx, repo, "worktree", "add", "--track", "-b", branch, path, "origin/"+branch)
 		return err
 	}
-	base, err := defaultBranch(ctx, repo)
+	base, err := gitinfo.DefaultBranch(ctx, repo)
 	if err != nil {
 		return err
 	}
 	_, err = git(ctx, repo, "worktree", "add", "--no-track", "-b", branch, path, "origin/"+base)
 	return err
-}
-
-func defaultBranch(ctx context.Context, repo string) (string, error) {
-	if ref, err := git(ctx, repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
-		return strings.TrimPrefix(ref, "origin/"), nil
-	}
-	for _, b := range []string{"main", "master"} {
-		if _, err := git(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+b); err == nil {
-			return b, nil
-		}
-	}
-	return "", fmt.Errorf("cannot tell the default branch of %s (set origin/HEAD with `git remote set-head origin -a`)", repo)
 }
 
 // Check returns an error if another live agent already uses worktree, and a warning
