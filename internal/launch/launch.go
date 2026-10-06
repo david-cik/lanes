@@ -187,6 +187,8 @@ type Plan struct {
 	Adapter  agent.Adapter
 	Args     []string
 	Warning  string
+	HookBin  string // lanes executable the agent's hooks call; "" = no hooks
+	Socket   string // panel socket the hooks report to
 }
 
 // Run creates the worktree, starts the agent in its own tmux session, and saves the record.
@@ -199,10 +201,14 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 		Worktree: p.Worktree, Branch: p.Branch, CreatedAt: time.Now().UTC(),
 	}
 	cmd := p.Adapter.Command(agent.LaunchSpec{
-		Name: p.Ticket.Key + " " + Slug(p.Ticket.Title), Prompt: p.Prompt, Args: p.Args,
+		Name: p.Ticket.Key + " " + Slug(p.Ticket.Title), Prompt: p.Prompt, Args: p.Args, HookBin: p.HookBin,
 	})
 	rec.SessionID = cmd.SessionID
-	pane, err := tm.NewSession(rec.Session(), p.Worktree, append(cmd.Env, "LANES_AGENT_ID="+rec.ID), cmd.Argv)
+	env := append(cmd.Env, "LANES_AGENT_ID="+rec.ID)
+	if p.Socket != "" {
+		env = append(env, "LANES_SOCKET="+p.Socket)
+	}
+	pane, err := tm.NewSession(rec.Session(), p.Worktree, env, cmd.Argv)
 	if err != nil {
 		return rec, err
 	}

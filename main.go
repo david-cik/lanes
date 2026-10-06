@@ -20,6 +20,7 @@ import (
 	"github.com/david-cik/lanes/internal/agent/codex"
 	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/fleet"
+	"github.com/david-cik/lanes/internal/hook"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tmux"
 	"github.com/david-cik/lanes/internal/tracker/linear"
@@ -29,6 +30,12 @@ import (
 const tmuxSession = "lanes"
 
 func main() {
+	// `lanes hook <tool> <event>` runs inside agent tools on every hook event: keep it
+	// fast (no config, no network) and silent on any failure.
+	if len(os.Args) == 4 && os.Args[1] == "hook" {
+		hook.Client(os.Stdin, os.Stdout, os.Getenv("LANES_SOCKET"), os.Getenv("LANES_AGENT_ID"), os.Args[2], os.Args[3])
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "lanes:", err)
 		os.Exit(1)
