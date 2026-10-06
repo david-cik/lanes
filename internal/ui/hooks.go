@@ -216,6 +216,12 @@ func (m *Model) approve() tea.Cmd {
 		}
 	}
 	if id == "" {
+		for _, st := range m.hooks {
+			if st.trust {
+				m.say("", fmt.Errorf("the folder-trust prompt can only be answered in the agent's pane"))
+				return nil
+			}
+		}
 		m.say("", fmt.Errorf("nothing is waiting for approval"))
 		return nil
 	}

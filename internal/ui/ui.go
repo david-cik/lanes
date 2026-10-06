@@ -118,7 +118,7 @@ type Model struct {
 	readers      Readers
 	gitCache     map[string]cachedGit // by directory
 	prCache      map[string]cachedPR  // by directory + "\x00" + branch
-	issueDetails map[string]tracker.IssueDetail
+	issueDetails map[string]cachedIssue
 	modal        *modal
 
 	now func() time.Time
@@ -128,7 +128,7 @@ func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
 		stopping: map[string]bool{}, hooks: map[string]*hookState{},
 		readers: opt.Readers, gitCache: map[string]cachedGit{}, prCache: map[string]cachedPR{},
-		issueDetails: map[string]tracker.IssueDetail{}}
+		issueDetails: map[string]cachedIssue{}}
 	if m.readers.Git == nil {
 		m.readers = defaultReaders()
 	}
@@ -221,6 +221,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil { // keep the last good data on failure
 			m.issues, m.updated = msg.issues, m.now()
 			m.rebuild()
+			return m, m.detailsMoved() // the row under the cursor may have changed
 		}
 	case agentsMsg:
 		if msg.seq < m.agentSeen || (m.launchSeq > 0 && msg.seq <= m.launchSeq) {
@@ -234,6 +235,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.forgetStopped()
 			m.forgetHooks()
 			m.rebuild()
+			return m, m.detailsMoved()
 		}
 	case usersMsg:
 		if msg.err != nil {
@@ -415,11 +417,11 @@ func (m *Model) View() tea.View {
 	case m.agentErr != nil:
 		b.WriteString(errSty.Render(trunc("agents: "+firstLine(m.agentErr.Error()), m.width)))
 	case m.modal != nil:
-		b.WriteString(faint.Render(m.modal.hint()))
+		b.WriteString(faint.Render(trunc(m.modal.hint(), m.width)))
 	case m.opt.Tmux == nil:
-		b.WriteString(faint.Render("j/k move · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)"))
+		b.WriteString(faint.Render(trunc("j/k move · d details · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)", m.width)))
 	default:
-		b.WriteString(faint.Render("enter show · d details · a approve · n new · s send · x stop · l link · r refresh · u assignee · q quit"))
+		b.WriteString(faint.Render(trunc("enter show · d details · a approve · n new · s send · x stop · l link · r refresh · u assignee · q quit", m.width)))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true

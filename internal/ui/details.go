@@ -41,6 +41,10 @@ type (
 		detail tracker.IssueDetail
 		err    error
 	}
+	cachedIssue struct {
+		detail tracker.IssueDetail
+		err    error
+	}
 )
 
 type cachedGit struct {
@@ -69,11 +73,19 @@ func defaultReaders() Readers {
 			return gh.Find(ctx, gh.Exec, dir, branch)
 		},
 		Open: func(url string) error {
-			cmd := "xdg-open"
-			if runtime.GOOS == "darwin" {
-				cmd = "open"
+			if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
+				return fmt.Errorf("not opening %q: not a web address", url)
 			}
-			return exec.Command(cmd, url).Start()
+			name := "xdg-open"
+			if runtime.GOOS == "darwin" {
+				name = "open"
+			}
+			cmd := exec.Command(name, url)
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+			go cmd.Wait() // reap it
+			return nil
 		},
 	}
 }
@@ -140,11 +152,7 @@ func (m *Model) detailsUpdate(msg tea.Msg) {
 	case prMsg:
 		m.prCache[msg.key] = cachedPR{msg.pr, msg.err, now}
 	case issueMsg:
-		if msg.err == nil {
-			m.issueDetails[msg.key] = msg.detail
-		} else {
-			m.say("", msg.err)
-		}
+		m.issueDetails[msg.key] = cachedIssue{msg.detail, msg.err}
 	}
 }
 
@@ -202,7 +210,18 @@ func (m *Model) viewDetails(b *strings.Builder, height int) {
 	}
 }
 
-func (m *Model) fit(s string) string { return trunc(s, m.width) }
+// fit cleans text from outside (tracker, gh, git, agents) and cuts it to the panel width.
+// Call it on plain text, before styling: trunc counts style escapes as characters.
+func (m *Model) fit(s string) string { return trunc(clean(s), m.width) }
+
+func clean(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			return ' '
+		}
+		return r
+	}, s)
+}
 
 func (m *Model) agentDetails(a *agent.Agent) []string {
 	out := []string{bold.Render(m.fit(fmt.Sprintf("%s %s %s · %s %s", glyph(a.Status), a.Tool, a.Name, a.Status, age(m.now().Sub(a.Since)))))}
@@ -234,13 +253,12 @@ func (m *Model) agentDetails(a *agent.Agent) []string {
 			line += fmt.Sprintf("↑%d ↓%d vs %s · ", in.BaseAhead, in.BaseBehind, in.Base)
 		}
 		if in.Dirty > 0 {
-			line += pendC.Render(fmt.Sprintf("%d uncommitted", in.Dirty))
+			out = append(out, m.fit(line)+pendC.Render(m.fitAfter(line, fmt.Sprintf("%d uncommitted", in.Dirty))))
 		} else {
-			line += "clean"
+			out = append(out, m.fit(line+"clean"))
 		}
-		out = append(out, line)
 		if in.Subject != "" {
-			out = append(out, faint.Render(m.fit(fmt.Sprintf("  last: %s (%s ago)", in.Subject, age(m.now().Sub(in.When))))))
+			out = append(out, faint.Render(m.fit(fmt.Sprintf("  last: %s (%s)", in.Subject, ago(m.now().Sub(in.When))))))
 		}
 	}
 
@@ -268,41 +286,55 @@ func (m *Model) agentDetails(a *agent.Agent) []string {
 	default:
 		for i := len(st.activity) - 1; i >= 0; i-- {
 			e := st.activity[i]
-			out = append(out, m.fit("  "+faint.Render(e.at.Format("15:04"))+" "+e.text))
+			stamp := "  " + e.at.Format("15:04") + " "
+			out = append(out, faint.Render(stamp)+m.fitAfter(stamp, e.text))
 		}
 	}
 	return out
 }
 
+// prLines renders a PR in two short coloured lines plus the URL. The coloured parts
+// are tiny and fixed; the only free text (failing check names) is cut to what's left.
 func prLines(pr *gh.PR, m *Model) []string {
 	state := strings.ToLower(pr.State)
 	if pr.Draft {
 		state = "draft"
 	}
-	line := fmt.Sprintf("  #%d %s", pr.Number, state)
-	switch pr.Review {
-	case "APPROVED":
-		line += " · " + okC.Render("approved")
-	case "CHANGES_REQUESTED":
-		line += " · " + badC.Render("changes requested")
-	case "REVIEW_REQUIRED":
-		line += " · " + pendC.Render("review required")
-	}
+	head := fmt.Sprintf("  #%d %s", pr.Number, state)
+	review := map[string]string{"APPROVED": okC.Render(" · approved"), "CHANGES_REQUESTED": badC.Render(" · changes requested"),
+		"REVIEW_REQUIRED": pendC.Render(" · review required")}[pr.Review]
 	c := pr.Checks
+	plain := fmt.Sprintf("  checks ✓%d", c.Pass)
 	checks := "  checks " + okC.Render(fmt.Sprintf("✓%d", c.Pass))
 	if c.Fail > 0 {
+		plain += fmt.Sprintf(" ✗%d", c.Fail)
 		checks += " " + badC.Render(fmt.Sprintf("✗%d", c.Fail))
 	}
 	if c.Pending > 0 {
+		plain += fmt.Sprintf(" …%d", c.Pending)
 		checks += " " + pendC.Render(fmt.Sprintf("…%d", c.Pending))
 	}
 	if c.Skipped > 0 {
+		plain += fmt.Sprintf(" −%d", c.Skipped)
 		checks += faint.Render(fmt.Sprintf(" −%d", c.Skipped))
 	}
 	if len(pr.Failed) > 0 {
-		checks += " · failing: " + strings.Join(pr.Failed, ", ")
+		checks += m.fitAfter(plain, " · failing: "+strings.Join(pr.Failed, ", "))
 	}
-	return []string{line, checks, faint.Render(m.fit("  " + pr.URL + "  (o opens)"))}
+	return []string{m.fit(head) + review, checks, faint.Render(m.fit("  " + pr.URL + "  (o opens)"))}
+}
+
+// fitAfter cuts s to the width left after the plain text prefix.
+func (m *Model) fitAfter(prefix, s string) string {
+	return trunc(clean(s), max(m.width-len([]rune(prefix)), 1))
+}
+
+// ago is age phrased for a past moment.
+func ago(d time.Duration) string {
+	if a := age(d); a != "now" {
+		return a + " ago"
+	}
+	return "just now"
 }
 
 func (m *Model) ticketDetails(i *tracker.Issue) []string {
@@ -311,11 +343,14 @@ func (m *Model) ticketDetails(i *tracker.Issue) []string {
 		m.fit("  " + i.Team + " · " + i.State),
 		faint.Render(m.fit("  " + i.URL + "  (o opens)")),
 	}
-	d, ok := m.issueDetails[i.Key]
+	c, ok := m.issueDetails[i.Key]
+	d := c.detail
 	out = append(out, sect.Render("pull requests"))
 	switch {
 	case !ok:
 		out = append(out, faint.Render("  loading…"))
+	case c.err != nil:
+		out = append(out, faint.Render(m.fit("  "+firstLine(c.err.Error()))))
 	case len(d.PRURLs) == 0:
 		out = append(out, faint.Render("  none linked"))
 	default:

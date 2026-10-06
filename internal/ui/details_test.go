@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"regexp"
+
 	tea "charm.land/bubbletea/v2"
 	"context"
 	"errors"
@@ -173,5 +175,40 @@ func TestDetailsOnShortPanelTakeWholeBody(t *testing.T) {
 		t.Fatalf("short panel should show details only:\n%s", v)
 	}
 	_ = agent.Working
-	_ = errors.New
+}
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func TestDetailsLinesFitNarrowPanelAndStripControls(t *testing.T) {
+	m, fr := detailsModel(t)
+	fr.pr.Failed = []string{"a-very-long-check-name-that-goes-on", "another\tone\x1b[31m"}
+	m.Update(tea.WindowSizeMsg{Width: 40, Height: 40})
+	m.cursorTo(t, "one")
+	_, cmd := m.Update(key("d"))
+	settle(m, cmd)
+	for _, l := range strings.Split(view(m), "\n") {
+		plain := ansiRe.ReplaceAllString(l, "")
+		if n := len([]rune(plain)); n > 40 {
+			t.Errorf("line is %d wide: %q", n, plain)
+		}
+		if strings.ContainsAny(plain, "\t\x1b") {
+			t.Errorf("control characters leaked: %q", plain)
+		}
+	}
+}
+
+func TestTicketFetchErrorShownNotLoading(t *testing.T) {
+	m, _ := detailsModel(t)
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(issueMsg{key: "ABC-1", err: errors.New("linear: timeout")})
+	m.details = true
+	if v := view(m); !strings.Contains(v, "linear: timeout") || strings.Contains(v, "loading…") {
+		t.Fatalf("view:\n%s", v)
+	}
+}
+
+func TestOpenRefusesNonWebURL(t *testing.T) {
+	if err := defaultReaders().Open("-a Calculator"); err == nil {
+		t.Fatal("opened a non-URL")
+	}
 }
