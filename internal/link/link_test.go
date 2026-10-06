@@ -23,6 +23,8 @@ func TestMatch(t *testing.T) {
 		{"branch beats name", agent.Agent{Branch: "abc-5-x", Name: "ABC-6"}, "ABC-5"},
 		{"unknown prefix ignored", agent.Agent{Branch: "release-2026"}, ""},
 		{"unknown then known", agent.Agent{Branch: "release-2026-abc-8"}, "ABC-8"},
+		{"underscore separator", agent.Agent{Branch: "feat_abc-13"}, "ABC-13"},
+		{"zero padded", agent.Agent{Branch: "abc-012-x"}, "ABC-12"},
 		{"no match", agent.Agent{Branch: "main", Name: "scratch", Cwd: "/src"}, ""},
 	}
 	for _, c := range cases {

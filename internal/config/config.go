@@ -60,6 +60,11 @@ func Load(path string) (Config, error) {
 		}
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
+	for key, d := range map[string]time.Duration{"linear_poll": c.LinearPoll.Duration, "external_poll": c.ExternalPoll.Duration} {
+		if d < time.Second {
+			return c, fmt.Errorf("%s: %s must be at least 1s, got %v", path, key, d)
+		}
+	}
 	return c, nil
 }
 
@@ -69,8 +74,9 @@ func StateDir() (string, error) {
 	return dir, os.MkdirAll(dir, 0o700)
 }
 
+// xdg resolves an XDG base dir; relative values are ignored, as the spec requires.
 func xdg(env, fallback string) string {
-	if v := os.Getenv(env); v != "" {
+	if v := os.Getenv(env); filepath.IsAbs(v) {
 		return v
 	}
 	home, _ := os.UserHomeDir()

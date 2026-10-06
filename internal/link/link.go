@@ -9,7 +9,8 @@ import (
 	"github.com/david-cik/lanes/internal/tracker"
 )
 
-var keyRe = regexp.MustCompile(`(?i)\b([a-z][a-z0-9]*)-(\d+)\b`)
+// keyRe finds PREFIX-123; the leading class (not \b) lets "_" separate, e.g. feat_abc-12.
+var keyRe = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])([a-z][a-z0-9]*)-0*(\d+)`)
 
 // Prefixes returns the lower-case team prefixes seen in issue keys (ABC-12 → abc).
 func Prefixes(issues []tracker.Issue) map[string]bool {

@@ -39,6 +39,9 @@ func FillBranches(ctx context.Context, agents []Agent) {
 	seen := map[string]string{}
 	for i := range agents {
 		cwd := agents[i].Cwd
+		if cwd == "" { // git -C "" would report lanes' own directory
+			continue
+		}
 		b, ok := seen[cwd]
 		if !ok {
 			out, err := exec.CommandContext(ctx, "git", "-C", cwd, "branch", "--show-current").Output()

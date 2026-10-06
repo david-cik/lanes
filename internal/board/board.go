@@ -32,7 +32,8 @@ type Row struct {
 var stateRank = map[string]int{"triage": 0, "backlog": 1, "unstarted": 2, "started": 3}
 
 // Build groups issues team → state → ticket → agents. Agents whose ticket is not
-// in the list go to a trailing Unlinked group.
+// in the list go to a trailing Unlinked group. It sets TicketKey on the agents
+// passed in, so callers should pass a copy they own.
 func Build(issues []tracker.Issue, agents []agent.Agent) []Row {
 	pre := link.Prefixes(issues)
 	byKey := map[string][]*agent.Agent{}

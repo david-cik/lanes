@@ -78,10 +78,21 @@ func (st Store) save(s *saved) error {
 	if err := os.MkdirAll(filepath.Dir(st.File), 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(st.File, b, 0o600); err != nil {
+	// Write to a private temp file and rename, so the token is never readable by others
+	// even if an older file had a looser mode.
+	f, err := os.CreateTemp(filepath.Dir(st.File), ".token-*")
+	if err != nil {
 		return err
 	}
-	return os.Chmod(st.File, 0o600) // WriteFile keeps the mode of an existing file
+	defer os.Remove(f.Name())
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), st.File)
 }
 
 // Delete removes stored credentials from both places.

@@ -20,8 +20,9 @@ import (
 
 type (
 	issuesMsg struct {
-		issues []tracker.Issue
-		err    error
+		assignee string
+		issues   []tracker.Issue
+		err      error
 	}
 	agentsMsg struct {
 		agents []agent.Agent
@@ -86,7 +87,7 @@ func (m *Model) fetchIssues() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		is, err := tr.Issues(ctx, who)
-		return issuesMsg{is, err}
+		return issuesMsg{who, is, err}
 	}
 }
 
@@ -133,6 +134,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentsTick:
 		return m, tea.Batch(m.fetchAgents(), tick(m.opt.ExternalPoll, agentsTick{}))
 	case issuesMsg:
+		if msg.assignee != m.opt.Assignee {
+			return m, nil // stale: fetched before the assignee changed
+		}
 		m.issueErr = msg.err
 		if msg.err == nil { // keep the last good data on failure
 			m.issues, m.updated = msg.issues, m.now()

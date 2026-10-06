@@ -51,12 +51,12 @@ func TestAgentsNestUnderTicket(t *testing.T) {
 
 func TestRefreshErrorKeepsData(t *testing.T) {
 	m, _ := newModel()
-	m.Update(issuesMsg{err: errors.New("network down\nmore detail")})
+	m.Update(issuesMsg{assignee: "me", err: errors.New("network down\nmore detail")})
 	v := view(m)
 	if !strings.Contains(v, "ABC-1 fix it") || !strings.Contains(v, "tracker: network down") || strings.Contains(v, "more detail") {
 		t.Fatalf("view:\n%s", v)
 	}
-	m.Update(issuesMsg{issues: nil})
+	m.Update(issuesMsg{assignee: "me"})
 	if strings.Contains(view(m), "network down") {
 		t.Fatal("error not cleared after a good refresh")
 	}
@@ -90,5 +90,13 @@ func TestAssigneePicker(t *testing.T) {
 	cmd()
 	if len(ft.calls) != 1 || ft.calls[0] != "u2" || !strings.Contains(view(m), "lanes · Grace") {
 		t.Fatalf("calls=%v view:\n%s", ft.calls, view(m))
+	}
+}
+
+func TestStaleAssigneeResultDropped(t *testing.T) {
+	m, _ := newModel()
+	m.Update(issuesMsg{assignee: "someone-else"})
+	if !strings.Contains(view(m), "ABC-1 fix it") {
+		t.Fatal("stale result replaced current tickets")
 	}
 }

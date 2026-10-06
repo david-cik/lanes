@@ -54,3 +54,18 @@ func TestStateDirHonorsXDG(t *testing.T) {
 		t.Fatalf("dir=%s err=%v", dir, err)
 	}
 }
+
+func TestRelativeXDGIgnored(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "relative/dir")
+	if p := Path(); !filepath.IsAbs(p) {
+		t.Fatalf("relative XDG_CONFIG_HOME used: %s", p)
+	}
+}
+
+func TestPollFloor(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(p, []byte("linear_poll = \"0s\"\n"), 0o600)
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "linear_poll") {
+		t.Fatalf("want floor error, got %v", err)
+	}
+}

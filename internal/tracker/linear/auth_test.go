@@ -64,12 +64,15 @@ func TestStoreEmpty(t *testing.T) {
 func TestFallbackFileTightensExistingMode(t *testing.T) {
 	keyring.MockInitWithError(errors.New("no keychain"))
 	st := Store{File: filepath.Join(t.TempDir(), "token.json")}
-	os.WriteFile(st.File, []byte("{}"), 0o644)
+	if err := os.WriteFile(st.File, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.save(sample()); err != nil {
 		t.Fatal(err)
 	}
-	if fi, _ := os.Stat(st.File); fi.Mode().Perm() != 0o600 {
-		t.Fatalf("mode %v", fi.Mode().Perm())
+	fi, err := os.Stat(st.File)
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("stat %v err=%v", fi, err)
 	}
 }
 
