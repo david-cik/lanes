@@ -67,3 +67,19 @@ func TestSnapshotDoesNotPruneWhenTmuxFails(t *testing.T) {
 		t.Fatal("record deleted after tmux failure")
 	}
 }
+
+type noPanes struct{ t *testing.T }
+
+func (n noPanes) Panes() ([]tmux.Pane, error) {
+	n.t.Fatal("NoPrune run listed tmux panes")
+	return nil, nil
+}
+
+func TestNoPruneNeverTouchesTmux(t *testing.T) {
+	store := state.Store{Dir: t.TempDir()}
+	store.Save(state.Record{ID: "r1", Tool: "claude", Pane: "%1"})
+	_, live, err := Fleet{Store: store, Tmux: noPanes{t}, NoPrune: true}.Snapshot(context.Background())
+	if err != nil || len(live) != 1 {
+		t.Fatalf("live=%+v err=%v", live, err)
+	}
+}

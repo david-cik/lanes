@@ -32,9 +32,11 @@ func (f Fleet) Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, err
 	if err != nil {
 		errs = append(errs, err)
 	}
-	if panes, err := f.Tmux.Panes(); err != nil {
+	if f.NoPrune {
+		// read-only run: keep records as saved, don't depend on tmux at all
+	} else if panes, err := f.Tmux.Panes(); err != nil {
 		errs = append(errs, err) // keep records as they are; never prune blind
-	} else if !f.NoPrune {
+	} else {
 		paneOf := map[string]string{}
 		for _, p := range panes {
 			if p.Agent != "" && !p.Dead {

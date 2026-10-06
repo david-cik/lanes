@@ -26,6 +26,7 @@ type (
 		err      error
 	}
 	agentsMsg struct {
+		seq    int
 		agents []agent.Agent
 		live   []state.Record
 		err    error
@@ -98,6 +99,8 @@ type Model struct {
 	shown     string // record ID of the agent in the right slot
 	shownPane string
 	stopping  map[string]bool // record IDs being stopped; not controllable meanwhile
+	agentSeq  int             // numbers agent refreshes as they start
+	agentSeen int             // newest refresh applied; results older than it are dropped
 	modal     *modal
 
 	now func() time.Time
@@ -135,11 +138,13 @@ func (m *Model) fetchIssues() tea.Cmd {
 
 func (m *Model) fetchAgents() tea.Cmd {
 	f := m.opt.Fleet
+	m.agentSeq++
+	seq := m.agentSeq
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		a, live, err := f.Snapshot(ctx)
-		return agentsMsg{a, live, err}
+		return agentsMsg{seq, a, live, err}
 	}
 }
 
@@ -192,6 +197,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuild()
 		}
 	case agentsMsg:
+		if msg.seq < m.agentSeen {
+			return m, nil // a newer refresh already landed (e.g. right after a stop)
+		}
+		m.agentSeen = msg.seq
 		m.agentErr = msg.err
 		if msg.err == nil || len(msg.agents) > 0 {
 			m.agents, m.live = msg.agents, msg.live
@@ -220,6 +229,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotDetail(msg)
 	case tea.KeyPressMsg:
 		if md := m.modal; md != nil {
+			if msg.String() == "ctrl+c" {
+				m.unshow()
+				return m, tea.Quit
+			}
 			cmd, done := md.key(msg)
 			if done && m.modal == md { // a callback may have opened the next modal
 				m.modal = nil

@@ -103,3 +103,34 @@ func TestStaleAssigneeResultDropped(t *testing.T) {
 		t.Fatal("stale result replaced current tickets")
 	}
 }
+
+func TestOlderAgentRefreshIgnored(t *testing.T) {
+	m, _ := newModel()
+	m.agentSeq = 2
+	m.Update(agentsMsg{seq: 2, agents: []agent.Agent{{Tool: "claude", Name: "new", Branch: "abc-1-x"}}})
+	m.Update(agentsMsg{seq: 1, agents: []agent.Agent{{Tool: "claude", Name: "old", Branch: "abc-1-x"}}})
+	if v := view(m); !strings.Contains(v, "new") || strings.Contains(v, "old") {
+		t.Fatalf("view:\n%s", v)
+	}
+}
+
+func TestSlowRefreshStillAppliesWhileNewerOnesRun(t *testing.T) {
+	m, _ := newModel()
+	m.agentSeq = 5 // refreshes 4 and 5 started after 3, neither has returned
+	m.Update(agentsMsg{seq: 3, agents: []agent.Agent{{Tool: "claude", Name: "late", Branch: "abc-1-x"}}})
+	if !strings.Contains(view(m), "late") {
+		t.Fatal("a late refresh was dropped although nothing newer had landed")
+	}
+}
+
+func TestCtrlCQuitsFromModal(t *testing.T) {
+	m, _ := newModel()
+	m.Update(key("u"))
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("ctrl+c in a modal did not quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("ctrl+c in a modal did not quit")
+	}
+}
