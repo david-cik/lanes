@@ -13,8 +13,12 @@ func TestLoadMissingFileGivesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c != Default() {
+	d := Default()
+	if c.LinearPoll != d.LinearPoll || c.DefaultAgent != "claude" || c.BranchTemplate != d.BranchTemplate {
 		t.Fatalf("got %+v, want defaults", c)
+	}
+	if home, _ := os.UserHomeDir(); len(c.RepoRoots) != 2 || c.RepoRoots[0] != filepath.Join(home, "src") {
+		t.Fatalf("repo_roots not expanded: %v", c.RepoRoots)
 	}
 }
 
@@ -71,5 +75,39 @@ func TestPollFloor(t *testing.T) {
 		if _, err := Load(p); err == nil || !strings.Contains(err.Error(), key) {
 			t.Fatalf("%s: want floor error, got %v", key, err)
 		}
+	}
+}
+
+func TestM2Fields(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	body := `repo_roots = ["/code"]
+branch_template = "{key}-{slug}"
+
+[agents.claude]
+args = ["--model", "haiku"]
+
+[teams."Alpha Team"]
+state_order = ["Todo", "In Progress"]
+`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.RepoRoots[0] != "/code" || c.BranchTemplate != "{key}-{slug}" ||
+		c.Agents["claude"].Args[1] != "haiku" || c.Teams["Alpha Team"].StateOrder[1] != "In Progress" {
+		t.Fatalf("got %+v", c)
+	}
+}
+
+func TestBranchTemplateNeedsKey(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(p, []byte(`branch_template = "{slug}"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "branch_template") {
+		t.Fatalf("got %v", err)
 	}
 }

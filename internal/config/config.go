@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -28,13 +29,46 @@ type Config struct {
 	LinearPoll   Duration `toml:"linear_poll"`
 	ExternalPoll Duration `toml:"external_poll"`
 	Assignee     string   `toml:"assignee"`
+
+	RepoRoots        []string `toml:"repo_roots"`
+	DefaultAgent     string   `toml:"default_agent"`
+	BranchTemplate   string   `toml:"branch_template"`
+	WorktreeTemplate string   `toml:"worktree_template"`
+	PromptTemplate   string   `toml:"prompt_template"`
+	Preamble         string   `toml:"preamble"`
+
+	Agents map[string]AgentConfig `toml:"agents"`
+	Teams  map[string]TeamConfig  `toml:"teams"`
 }
+
+type AgentConfig struct {
+	Args []string `toml:"args"`
+}
+
+type TeamConfig struct {
+	// StateOrder lists workflow state names in display order; unlisted states follow.
+	StateOrder []string `toml:"state_order"`
+}
+
+// Template placeholders: {key} {key_lower} {slug} {title} {url} {description}
+// {preamble} {repo} {branch}.
+const DefaultPrompt = `{preamble}
+
+Ticket {key}: {title}
+{url}
+
+{description}`
 
 func Default() Config {
 	return Config{
-		LinearPoll:   Duration{60 * time.Second},
-		ExternalPoll: Duration{5 * time.Second},
-		Assignee:     "me",
+		LinearPoll:       Duration{60 * time.Second},
+		ExternalPoll:     Duration{5 * time.Second},
+		Assignee:         "me",
+		RepoRoots:        []string{"~/src", "~/git"},
+		DefaultAgent:     "claude",
+		BranchTemplate:   "{key_lower}/{slug}",
+		WorktreeTemplate: "{repo}/.worktrees/{branch}",
+		PromptTemplate:   DefaultPrompt,
 	}
 }
 
@@ -47,10 +81,7 @@ func Path() string {
 func Load(path string) (Config, error) {
 	c := Default()
 	b, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return c, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return c, err
 	}
 	if err := toml.Unmarshal(b, &c); err != nil {
@@ -65,7 +96,28 @@ func Load(path string) (Config, error) {
 			return c, fmt.Errorf("%s: %s must be at least 1s, got %v", path, key, d)
 		}
 	}
+	for key, v := range map[string]string{"default_agent": c.DefaultAgent, "worktree_template": c.WorktreeTemplate, "prompt_template": c.PromptTemplate} {
+		if strings.TrimSpace(v) == "" {
+			return c, fmt.Errorf("%s: %s must not be empty", path, key)
+		}
+	}
+	if !strings.Contains(c.BranchTemplate, "{key}") && !strings.Contains(c.BranchTemplate, "{key_lower}") {
+		return c, fmt.Errorf("%s: branch_template must contain {key} or {key_lower} so agents can be matched to tickets", path)
+	}
+	for i, r := range c.RepoRoots {
+		c.RepoRoots[i] = Expand(r)
+	}
 	return c, nil
+}
+
+// Expand replaces a leading ~ with the home directory.
+func Expand(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if h, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(h, p[1:])
+		}
+	}
+	return p
 }
 
 // StateDir returns $XDG_STATE_HOME/lanes (default ~/.local/state/lanes), creating it 0700.
