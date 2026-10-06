@@ -81,6 +81,7 @@ type Options struct {
 	HookBin string            // lanes executable launched agents' hooks call
 	Socket  string            // where those hooks connect
 	Notify  func(text string) // tmux / OS notification; nil = bell only
+	Notice  string            // shown in the footer at start (e.g. why hooks are off)
 }
 
 type Model struct {
@@ -118,6 +119,7 @@ type Model struct {
 func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
 		stopping: map[string]bool{}, hooks: map[string]*hookState{}}
+	m.notice = opt.Notice
 	if l, err := opt.Store.Links(); err == nil {
 		m.links = l
 	} else {
@@ -241,6 +243,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.hook(hook.Event(msg)), m.waitHook())
 	case trustMsg:
 		return m, m.trusted(msg)
+	case trustGoneMsg:
+		if st := m.hooks[msg.id]; st != nil {
+			st.trust = false
+			m.rebuild()
+		}
 	case detailMsg:
 		return m, m.gotDetail(msg)
 	case tea.KeyPressMsg:
@@ -341,7 +348,7 @@ func (m *Model) View() tea.View {
 		m.label, len(m.issues), len(m.agents), m.updated.Format("15:04:05"))
 	if n := m.waitingCount(); n > 0 { // first, so a narrow panel never cuts it off
 		w := fmt.Sprintf("⚠ %d waiting (a) · ", n)
-		b.WriteString(waitS.Render(trunc(w, m.width)) + bold.Render(trunc(header, m.width-len([]rune(w)))) + "\n")
+		b.WriteString(waitS.Render(trunc(w, m.width)) + bold.Render(trunc(header, max(m.width-len([]rune(w)), 1))) + "\n")
 	} else {
 		b.WriteString(bold.Render(trunc(header, m.width)) + "\n")
 	}

@@ -14,8 +14,9 @@ import (
 )
 
 type (
-	hookMsg  hook.Event
-	trustMsg struct{ id string }
+	hookMsg      hook.Event
+	trustMsg     struct{ id, pane string }
+	trustGoneMsg struct{ id string }
 )
 
 // hookState is what hooks have told lanes about one launched agent.
@@ -332,7 +333,7 @@ func (m *Model) watchTrust(id, pane string) tea.Cmd {
 				return nil
 			}
 			if trustPrompt(out) {
-				return trustMsg{id}
+				return trustMsg{id, pane}
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -357,5 +358,20 @@ func (m *Model) trusted(msg trustMsg) tea.Cmd {
 	st.trust = true
 	m.rebuild()
 	m.say("Claude asks whether to trust this new worktree — answer in the right pane (option 2 trusts it)", nil)
-	return m.notify(msg.id, "folder-trust prompt")
+	return tea.Batch(m.notify(msg.id, "folder-trust prompt"), m.watchTrustGone(msg.id, msg.pane))
+}
+
+// watchTrustGone clears the trust note once the prompt leaves the screen, even if the
+// agent then sits idle and no hook fires.
+func (m *Model) watchTrustGone(id, pane string) tea.Cmd {
+	tm := m.opt.Tmux
+	return func() tea.Msg {
+		for {
+			out, err := tm.Capture(pane)
+			if err != nil || !trustPrompt(out) {
+				return trustGoneMsg{id}
+			}
+			time.Sleep(time.Second)
+		}
+	}
 }

@@ -138,13 +138,14 @@ func run() error {
 		opt.Tmux, opt.Panel, opt.Placeholder = tm, panel, placeholder
 
 		sock := filepath.Join(stateDir, "lanes.sock")
-		srv, err := hook.Listen(sock)
-		if err != nil {
-			return err
-		}
-		defer srv.Close() // waiting hooks hang up; each agent's own prompt takes over
-		if bin, err := os.Executable(); err == nil {
-			opt.Hooks, opt.HookBin, opt.Socket = srv.Events(), bin, sock
+		if srv, err := hook.Listen(sock); err != nil {
+			// Agents still launch and work; they just report no live status or approvals.
+			opt.Notice = "live status and approvals are off: " + err.Error()
+		} else {
+			defer srv.Close() // waiting hooks hang up; each agent's own prompt takes over
+			if bin, err := os.Executable(); err == nil {
+				opt.Hooks, opt.HookBin, opt.Socket = srv.Events(), bin, sock
+			}
 		}
 		opt.Notify = notifier(tm, panel, cfg.NotifyOS)
 	}

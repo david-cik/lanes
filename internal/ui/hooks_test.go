@@ -203,6 +203,7 @@ func TestTrustPromptDetected(t *testing.T) {
 	ft.screen = "Quick safety check: Is this a project you created or one you trust?\n ❯ No, exit\n   Yes, I trust this folder"
 	msg := m.watchTrust("r1", "%1")()
 	_, cmd := m.Update(msg)
+	ft.screen = "" // let the "prompt gone" watcher in cmd finish
 	runCmd(cmd)
 	if v := view(m); !strings.Contains(v, "answer the folder-trust prompt") || len(*notes) != 1 {
 		t.Fatalf("view:\n%s\nnotes %v", v, *notes)
@@ -210,6 +211,17 @@ func TestTrustPromptDetected(t *testing.T) {
 	m.Update(hookMsg(hook.Event{ID: 1, Agent: "r1", Tool: "claude", Event: "UserPromptSubmit", Payload: []byte(`{}`)}))
 	if strings.Contains(view(m), "folder-trust") {
 		t.Fatal("trust note survived the first hook event")
+	}
+}
+
+func TestTrustNoteClearsWhenPromptLeavesScreen(t *testing.T) {
+	m, ft, _ := hookModel(t)
+	ft.screen = "Yes, I trust this folder"
+	m.Update(m.watchTrust("r1", "%1")())
+	ft.screen = "❯ " // answered; Claude sits idle, no hook fires
+	m.Update(m.watchTrustGone("r1", "%1")())
+	if strings.Contains(view(m), "folder-trust") {
+		t.Fatal("trust note stuck after the prompt was answered")
 	}
 }
 
