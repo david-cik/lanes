@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/david-cik/lanes/internal/agent"
@@ -43,14 +44,13 @@ func TestCommand(t *testing.T) {
 	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(c.SessionID) {
 		t.Fatalf("session id %q", c.SessionID)
 	}
-	want := []string{"claude", "--session-id", c.SessionID, "-n", "ABC-1 fix", "--model", "haiku", " --do it"}
-	if len(c.Argv) != len(want) {
-		t.Fatalf("argv %q", c.Argv)
+	i := slices.Index(c.Argv, "claude")
+	if c.Argv[0] != "env" || i < 0 || !slices.Contains(c.Argv[:i], "CLAUDE_CODE_SESSION_ID") {
+		t.Fatalf("argv does not clear inherited session vars: %q", c.Argv)
 	}
-	for i := range want {
-		if c.Argv[i] != want[i] {
-			t.Fatalf("argv %q, want %q", c.Argv, want)
-		}
+	want := []string{"claude", "--session-id", c.SessionID, "-n", "ABC-1 fix", "--model", "haiku", " --do it"}
+	if !slices.Equal(c.Argv[i:], want) {
+		t.Fatalf("argv %q, want %q", c.Argv[i:], want)
 	}
 	if New().Command(agent.LaunchSpec{}).SessionID == c.SessionID {
 		t.Fatal("session ids repeat")

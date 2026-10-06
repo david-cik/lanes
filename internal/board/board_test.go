@@ -51,7 +51,7 @@ Unlinked
  @closed-ticket
  @scratch
 `
-	got := render(Build(issues, agents))
+	got := render(Build(issues, agents, nil, nil))
 	if got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
@@ -61,7 +61,36 @@ Unlinked
 }
 
 func TestBuildEmpty(t *testing.T) {
-	if rows := Build(nil, nil); len(rows) != 0 {
+	if rows := Build(nil, nil, nil, nil); len(rows) != 0 {
 		t.Fatalf("got %+v", rows)
+	}
+}
+
+func TestLinkPrecedenceAndStateOrder(t *testing.T) {
+	issues := []tracker.Issue{
+		{Key: "ABC-1", Title: "one", Team: "Alpha", State: "In Progress", StateType: "started"},
+		{Key: "ABC-2", Title: "two", Team: "Alpha", State: "In Review", StateType: "started"},
+		{Key: "ABC-3", Title: "three", Team: "Alpha", State: "In Staging", StateType: "started"},
+	}
+	agents := []agent.Agent{
+		{Tool: "claude", ID: "s1", Name: "preset", Branch: "abc-3-x", TicketKey: "ABC-1"}, // launch record wins over branch
+		{Tool: "claude", ID: "s2", Name: "linked", Branch: "abc-3-x"},                     // manual link wins over branch
+		{Tool: "claude", ID: "s3", Name: "inferred", Branch: "abc-3-x"},
+	}
+	links := map[string]string{"claude:s2": "ABC-2"}
+	order := map[string][]string{"Alpha": {"In Progress", "In Staging"}}
+	want := `Alpha
+ In Progress
+  ABC-1 one
+   @preset
+ In Staging
+  ABC-3 three
+   @inferred
+ In Review
+  ABC-2 two
+   @linked
+`
+	if got := render(Build(issues, agents, links, order)); got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }

@@ -3,7 +3,6 @@ package ui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -15,6 +14,8 @@ import (
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/board"
+	"github.com/david-cik/lanes/internal/config"
+	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tracker"
 )
 
@@ -26,19 +27,48 @@ type (
 	}
 	agentsMsg struct {
 		agents []agent.Agent
+		live   []state.Record
 		err    error
 	}
 	usersMsg struct {
 		users []tracker.User
 		err   error
 	}
+	noticeMsg struct {
+		text string
+		err  error
+	}
 	issuesTick struct{}
 	agentsTick struct{}
 )
 
+// Snapshotter lists agents and live launch records (fleet.Fleet in production).
+type Snapshotter interface {
+	Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, error)
+}
+
+// Tmux is the part of tmux.Client the panel drives.
+type Tmux interface {
+	NewSession(name, cwd string, env, argv []string) (string, error)
+	SetOpt(pane, key, val string) error
+	Swap(a, b string) error
+	Join(src, dst string, percent int) error
+	Select(pane string) error
+	SendText(pane, text string) error
+	SendKeys(pane string, keys ...string) error
+	KillSession(name string) error
+	HasSession(name string) bool
+}
+
 type Options struct {
 	Tracker      tracker.Tracker
+	Fleet        Snapshotter
 	Adapters     []agent.Adapter
+	Store        state.Store
+	Tmux         Tmux   // nil when not running inside tmux (read-only board)
+	Panel        string // this panel's tmux pane
+	Placeholder  string // pane that fills the right slot when no agent is shown
+	Config       config.Config
 	Assignee     string // tracker argument, e.g. "me"
 	Issues       []tracker.Issue
 	LinearPoll   time.Duration
@@ -46,29 +76,41 @@ type Options struct {
 }
 
 type Model struct {
-	opt      Options
-	label    string // assignee shown in the header
-	issues   []tracker.Issue
-	agents   []agent.Agent
-	rows     []board.Row
-	cursor   int
-	offset   int
-	width    int
-	height   int
-	updated  time.Time
+	opt     Options
+	label   string // assignee shown in the header
+	issues  []tracker.Issue
+	agents  []agent.Agent
+	live    []state.Record
+	links   state.Links
+	users   []tracker.User
+	rows    []board.Row
+	cursor  int
+	offset  int
+	width   int
+	height  int
+	updated time.Time
+
 	issueErr error
 	agentErr error
+	notice   string
+	noticeOK bool
 
-	picking bool
-	users   []tracker.User
-	filter  string
-	pick    int
+	shown     string // record ID of the agent in the right slot
+	shownPane string
+	stopping  map[string]bool // record IDs being stopped; not controllable meanwhile
+	modal     *modal
 
 	now func() time.Time
 }
 
 func New(opt Options) *Model {
-	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24}
+	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
+		stopping: map[string]bool{}}
+	if l, err := opt.Store.Links(); err == nil {
+		m.links = l
+	} else {
+		m.links, m.notice = state.Links{}, err.Error()
+	}
 	m.rebuild()
 	return m
 }
@@ -92,21 +134,12 @@ func (m *Model) fetchIssues() tea.Cmd {
 }
 
 func (m *Model) fetchAgents() tea.Cmd {
-	ads := m.opt.Adapters
+	f := m.opt.Fleet
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		var all []agent.Agent
-		var errs []error
-		for _, a := range ads {
-			got, err := a.List(ctx)
-			if err != nil {
-				errs = append(errs, err)
-			}
-			all = append(all, got...)
-		}
-		agent.FillBranches(ctx, all)
-		return agentsMsg{all, errors.Join(errs...)}
+		a, live, err := f.Snapshot(ctx)
+		return agentsMsg{a, live, err}
 	}
 }
 
@@ -120,9 +153,25 @@ func (m *Model) fetchUsers() tea.Cmd {
 	}
 }
 
+func (m *Model) stateOrder() map[string][]string {
+	o := map[string][]string{}
+	for team, tc := range m.opt.Config.Teams {
+		o[team] = tc.StateOrder
+	}
+	return o
+}
+
 func (m *Model) rebuild() {
-	m.rows = board.Build(m.issues, slices.Clone(m.agents))
+	m.rows = board.Build(m.issues, slices.Clone(m.agents), m.links, m.stateOrder())
 	m.cursor = min(m.cursor, max(len(m.rows)-1, 0))
+}
+
+func (m *Model) say(text string, err error) {
+	if err != nil {
+		m.notice, m.noticeOK = err.Error(), false
+	} else {
+		m.notice, m.noticeOK = text, true
+	}
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -145,17 +194,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentsMsg:
 		m.agentErr = msg.err
 		if msg.err == nil || len(msg.agents) > 0 {
-			m.agents = msg.agents
+			m.agents, m.live = msg.agents, msg.live
+			m.dropVanishedShown()
+			m.forgetStopped()
 			m.rebuild()
 		}
 	case usersMsg:
 		if msg.err != nil {
-			m.issueErr, m.picking = msg.err, false
+			m.say("", msg.err)
+			if m.modal != nil && m.modal.id == "assignee" {
+				m.modal = nil
+			}
+			return m, nil
 		}
 		m.users = msg.users
+		if m.modal != nil && m.modal.id == "assignee" {
+			m.modal.items = m.assigneeChoices()
+		}
+	case noticeMsg:
+		m.say(msg.text, msg.err)
+		return m, m.fetchAgents()
+	case launchedMsg:
+		return m, m.launched(msg)
+	case detailMsg:
+		return m, m.gotDetail(msg)
 	case tea.KeyPressMsg:
-		if m.picking {
-			return m, m.pickKey(msg)
+		if md := m.modal; md != nil {
+			cmd, done := md.key(msg)
+			if done && m.modal == md { // a callback may have opened the next modal
+				m.modal = nil
+			}
+			return m, cmd
 		}
 		return m, m.boardKey(msg)
 	}
@@ -163,8 +232,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
+	m.notice = ""
 	switch k.String() {
 	case "q", "ctrl+c":
+		m.unshow() // best effort on the way out; Reconcile repairs the rest next start
 		return tea.Quit
 	case "j", "down":
 		m.cursor = min(m.cursor+1, max(len(m.rows)-1, 0))
@@ -177,54 +248,49 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 	case "r":
 		return tea.Batch(m.fetchIssues(), m.fetchAgents())
 	case "u":
-		m.picking, m.filter, m.pick = true, "", 0
+		m.modal = &modal{id: "assignee", title: "Show tickets assigned to", items: m.assigneeChoices(),
+			onChoose: m.chooseAssignee}
 		if m.users == nil {
 			return m.fetchUsers()
 		}
+	case "enter":
+		return m.focusSelected()
+	case "n":
+		return m.newAgent()
+	case "s":
+		return m.sendSelected()
+	case "x":
+		return m.stopSelected()
+	case "l":
+		return m.linkSelected()
 	}
 	return nil
 }
 
-type choice struct{ arg, label string }
-
-func (m *Model) choices() []choice {
+func (m *Model) assigneeChoices() []choice {
 	cs := []choice{{"me", "me"}}
-	f := strings.ToLower(m.filter)
 	for _, u := range m.users {
-		if f == "" || strings.Contains(strings.ToLower(u.Name+" "+u.Email), f) {
-			cs = append(cs, choice{u.ID, u.Name})
-		}
+		cs = append(cs, choice{u.Name + " " + faint.Render(u.Email), u.ID + "\x00" + u.Name})
 	}
 	return cs
 }
 
-func (m *Model) pickKey(k tea.KeyPressMsg) tea.Cmd {
-	cs := m.choices()
-	switch k.String() {
-	case "ctrl+c":
-		return tea.Quit
-	case "esc":
-		m.picking = false
-	case "down", "ctrl+n":
-		m.pick = min(m.pick+1, len(cs)-1)
-	case "up", "ctrl+p":
-		m.pick = max(m.pick-1, 0)
-	case "enter":
-		c := cs[m.pick]
-		m.picking, m.opt.Assignee, m.label = false, c.arg, c.label
-		m.issues, m.cursor = nil, 0
-		m.rebuild()
-		return m.fetchIssues()
-	case "backspace":
-		if r := []rune(m.filter); len(r) > 0 {
-			m.filter, m.pick = string(r[:len(r)-1]), 0
-		}
-	default:
-		if t := k.Text; t != "" {
-			m.filter, m.pick = m.filter+t, 0
-		}
+func (m *Model) chooseAssignee(c choice) tea.Cmd {
+	id, name, ok := strings.Cut(c.value, "\x00")
+	if !ok {
+		name = id
 	}
-	return nil
+	m.opt.Assignee, m.label = id, name
+	m.issues, m.cursor = nil, 0
+	m.rebuild()
+	return m.fetchIssues()
+}
+
+func (m *Model) selected() (board.Row, bool) {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return board.Row{}, false
+	}
+	return m.rows[m.cursor], true
 }
 
 var (
@@ -232,6 +298,7 @@ var (
 	faint  = lipgloss.NewStyle().Faint(true)
 	sel    = lipgloss.NewStyle().Reverse(true)
 	errSty = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	okSty  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	stateS = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	workS  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	waitS  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
@@ -244,21 +311,27 @@ func (m *Model) View() tea.View {
 	b.WriteString(bold.Render(trunc(header, m.width)) + "\n")
 
 	body := max(m.height-2, 1)
-	if m.picking {
-		m.viewPicker(&b, body)
+	if m.modal != nil {
+		m.modal.view(&b, m.width, body)
 	} else {
 		m.viewBoard(&b, body)
 	}
 
 	switch {
+	case m.notice != "" && m.noticeOK:
+		b.WriteString(okSty.Render(trunc(m.notice, m.width)))
+	case m.notice != "":
+		b.WriteString(errSty.Render(trunc(firstLine(m.notice), m.width)))
 	case m.issueErr != nil:
-		b.WriteString(errSty.Render(trunc("tracker: "+firstLine(m.issueErr), m.width)))
+		b.WriteString(errSty.Render(trunc("tracker: "+firstLine(m.issueErr.Error()), m.width)))
 	case m.agentErr != nil:
-		b.WriteString(errSty.Render(trunc("agents: "+firstLine(m.agentErr), m.width)))
-	case m.picking:
-		b.WriteString(faint.Render("type to filter · ↑/↓ · enter select · esc cancel"))
+		b.WriteString(errSty.Render(trunc("agents: "+firstLine(m.agentErr.Error()), m.width)))
+	case m.modal != nil:
+		b.WriteString(faint.Render(m.modal.hint()))
+	case m.opt.Tmux == nil:
+		b.WriteString(faint.Render("j/k move · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)"))
 	default:
-		b.WriteString(faint.Render("j/k move · r refresh · u assignee · q quit"))
+		b.WriteString(faint.Render("enter show · n new · s send · x stop · l link · r refresh · u assignee · q quit"))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true
@@ -290,26 +363,6 @@ func (m *Model) viewBoard(b *strings.Builder, body int) {
 	b.WriteString(strings.Repeat("\n", body-(end-m.offset)))
 }
 
-func (m *Model) viewPicker(b *strings.Builder, body int) {
-	b.WriteString("assignee: " + m.filter + "▏\n")
-	if m.users == nil {
-		b.WriteString(faint.Render("  loading users…") + "\n")
-		b.WriteString(strings.Repeat("\n", max(body-2, 0)))
-		return
-	}
-	cs := m.choices()
-	start := max(m.pick-(body-2), 0)
-	end := min(start+body-1, len(cs))
-	for i := start; i < end; i++ {
-		line := trunc("  "+cs[i].label, m.width)
-		if i == m.pick {
-			line = sel.Render(line)
-		}
-		b.WriteString(line + "\n")
-	}
-	b.WriteString(strings.Repeat("\n", max(body-1-(end-start), 0)))
-}
-
 func (m *Model) style(r board.Row) lipgloss.Style {
 	switch r.Kind {
 	case board.TeamRow, board.UnlinkedRow:
@@ -336,7 +389,7 @@ func (m *Model) line(r board.Row) string {
 	case board.AgentRow:
 		a := r.Agent
 		s := fmt.Sprintf("%s%s %s %s %-7s %s", ind, glyph(a.Status), a.Tool, a.Name, a.Status, age(m.now().Sub(a.Since)))
-		if a.Branch != "" {
+		if a.Branch != "" && a.Branch != a.Name {
 			s += " · " + a.Branch
 		}
 		if r.Level == 1 { // unlinked: show where it runs
@@ -344,6 +397,9 @@ func (m *Model) line(r board.Row) string {
 		}
 		if a.External {
 			s += " (ro)"
+		}
+		if a.RecordID != "" && a.RecordID == m.shown {
+			s += " ◀"
 		}
 		return s
 	}
@@ -389,7 +445,7 @@ func trunc(s string, n int) string {
 	return string(r[:max(n-1, 0)]) + "…"
 }
 
-func firstLine(err error) string {
-	s, _, _ := strings.Cut(err.Error(), "\n")
+func firstLine(s string) string {
+	s, _, _ = strings.Cut(s, "\n")
 	return s
 }

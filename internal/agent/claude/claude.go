@@ -56,11 +56,24 @@ func (a *Adapter) List(ctx context.Context) ([]agent.Agent, error) {
 	return out, nil
 }
 
+// inherited are variables that tie a process to a running Claude session. If lanes
+// itself was started from inside Claude, a launched agent would inherit them and be
+// treated as that session's child (taking its name, among other things).
+var inherited = []string{
+	"CLAUDECODE", "CLAUDE_PID", "CLAUDE_JOB_DIR", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
+	"CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN",
+	"CLAUDE_CODE_BRIDGE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT",
+}
+
 // Command starts an interactive session with a pre-assigned id so lanes can find it
 // again in `claude agents --json`.
 func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
 	id := uuid()
-	argv := []string{"claude", "--session-id", id}
+	argv := []string{"env"}
+	for _, v := range inherited {
+		argv = append(argv, "-u", v)
+	}
+	argv = append(argv, "claude", "--session-id", id)
 	if spec.Name != "" {
 		argv = append(argv, "-n", spec.Name)
 	}

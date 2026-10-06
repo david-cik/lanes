@@ -86,17 +86,27 @@ func (s Store) All() ([]Record, error) {
 	return recs, errors.Join(bad...)
 }
 
-// Prune deletes records whose pane no longer exists and returns the survivors.
-func (s Store) Prune(recs []Record, livePanes map[string]bool) []Record {
+// Prune keeps records whose agent still has a live tmux pane and deletes the rest.
+// paneOf maps record ID → pane ID, found via the @lanes_agent pane option (pane IDs
+// are reused after a tmux server restart, so they can't identify an agent alone).
+// A record whose pane ID changed is updated. Callers must not prune when listing
+// panes failed, or every record would be deleted.
+func (s Store) Prune(recs []Record, paneOf map[string]string) ([]Record, error) {
 	var keep []Record
+	var errs []error
 	for _, r := range recs {
-		if livePanes[r.Pane] {
-			keep = append(keep, r)
-		} else {
-			s.Delete(r.ID)
+		pane, ok := paneOf[r.ID]
+		if !ok {
+			errs = append(errs, s.Delete(r.ID))
+			continue
 		}
+		if pane != r.Pane {
+			r.Pane = pane
+			errs = append(errs, s.Save(r))
+		}
+		keep = append(keep, r)
 	}
-	return keep
+	return keep, errors.Join(errs...)
 }
 
 // Links maps "<tool>:<sessionId>" to a ticket key for manually linked external sessions.

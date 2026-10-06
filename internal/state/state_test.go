@@ -20,12 +20,12 @@ func TestRecordsRoundTripAndPrune(t *testing.T) {
 	if err != nil || len(all) != 2 {
 		t.Fatalf("all=%+v err=%v", all, err)
 	}
-	keep := s.Prune(all, map[string]bool{"%1": true})
-	if len(keep) != 1 || keep[0] != a {
-		t.Fatalf("keep=%+v", keep)
+	keep, err := s.Prune(all, map[string]string{"a1": "%9"})
+	if err != nil || len(keep) != 1 || keep[0].ID != "a1" || keep[0].Pane != "%9" {
+		t.Fatalf("keep=%+v err=%v", keep, err)
 	}
-	if all, _ := s.All(); len(all) != 1 {
-		t.Fatalf("pruned record still on disk: %+v", all)
+	if all, _ := s.All(); len(all) != 1 || all[0].Pane != "%9" {
+		t.Fatalf("disk after prune: %+v", all)
 	}
 	if a.Session() != "lanes-a1" {
 		t.Fatal(a.Session())

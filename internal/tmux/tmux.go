@@ -13,6 +13,7 @@ import (
 const (
 	OptAgent       = "@lanes_agent"
 	OptPlaceholder = "@lanes_placeholder"
+	OptPanel       = "@lanes_panel"
 )
 
 // Client runs tmux against the default server, or a named one (-L) when Socket is set.
@@ -23,6 +24,7 @@ type Pane struct {
 	Session     string
 	Agent       string // value of @lanes_agent
 	Placeholder bool
+	Panel       string // value of @lanes_panel: the panel process's PID
 	Dead        bool
 }
 
@@ -63,7 +65,7 @@ func (c Client) SetOpt(pane, key, val string) error {
 // Panes lists every pane on the server.
 func (c Client) Panes() ([]Pane, error) {
 	out, err := c.run("list-panes", "-a", "-F",
-		"#{pane_id}\t#{session_name}\t#{"+OptAgent+"}\t#{"+OptPlaceholder+"}\t#{pane_dead}")
+		"#{pane_id}\t#{session_name}\t#{"+OptAgent+"}\t#{"+OptPlaceholder+"}\t#{"+OptPanel+"}\t#{pane_dead}")
 	if err != nil {
 		if strings.Contains(err.Error(), "no server running") || strings.Contains(err.Error(), "error connecting") {
 			return nil, nil
@@ -73,10 +75,10 @@ func (c Client) Panes() ([]Pane, error) {
 	var panes []Pane
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 5 {
+		if len(f) != 6 {
 			continue
 		}
-		panes = append(panes, Pane{ID: f[0], Session: f[1], Agent: f[2], Placeholder: f[3] == "1", Dead: f[4] == "1"})
+		panes = append(panes, Pane{ID: f[0], Session: f[1], Agent: f[2], Placeholder: f[3] == "1", Panel: f[4], Dead: f[5] == "1"})
 	}
 	return panes, nil
 }
@@ -84,6 +86,18 @@ func (c Client) Panes() ([]Pane, error) {
 // Swap exchanges two panes' positions without changing focus.
 func (c Client) Swap(a, b string) error {
 	_, err := c.run("swap-pane", "-d", "-s", a, "-t", b)
+	return err
+}
+
+// Join moves src next to dst (to its right) without focusing it.
+func (c Client) Join(src, dst string, percent int) error {
+	_, err := c.run("join-pane", "-h", "-d", "-l", fmt.Sprintf("%d%%", percent), "-s", src, "-t", dst)
+	return err
+}
+
+// UnsetOpt removes a pane option.
+func (c Client) UnsetOpt(pane, key string) error {
+	_, err := c.run("set-option", "-p", "-u", "-t", pane, key)
 	return err
 }
 

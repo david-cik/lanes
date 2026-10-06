@@ -7,6 +7,7 @@ import (
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/link"
+	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tracker"
 )
 
@@ -34,7 +35,11 @@ var stateRank = map[string]int{"triage": 0, "backlog": 1, "unstarted": 2, "start
 // Build groups issues team → state → ticket → agents. Agents whose ticket is not
 // in the list go to a trailing Unlinked group. It sets TicketKey on the agents
 // passed in, so callers should pass a copy they own.
-func Build(issues []tracker.Issue, agents []agent.Agent) []Row {
+//
+// An agent's ticket is, in order: preset (launched by lanes), a manual link
+// (links["tool:sessionID"]), or inferred from branch/name/path. stateOrder maps a
+// team name to its workflow states in display order.
+func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stateOrder map[string][]string) []Row {
 	pre := link.Prefixes(issues)
 	byKey := map[string][]*agent.Agent{}
 	var unlinked []*agent.Agent
@@ -44,7 +49,12 @@ func Build(issues []tracker.Issue, agents []agent.Agent) []Row {
 	}
 	for idx := range agents {
 		a := &agents[idx]
-		a.TicketKey = link.Match(*a, pre)
+		if a.TicketKey == "" {
+			a.TicketKey = links[state.LinkKey(a.Tool, a.ID)]
+		}
+		if a.TicketKey == "" {
+			a.TicketKey = link.Match(*a, pre)
+		}
 		if open[a.TicketKey] {
 			byKey[a.TicketKey] = append(byKey[a.TicketKey], a)
 		} else {
@@ -56,6 +66,7 @@ func Build(issues []tracker.Issue, agents []agent.Agent) []Row {
 	slices.SortStableFunc(sorted, func(a, b tracker.Issue) int {
 		return cmp.Or(
 			cmp.Compare(a.Team, b.Team),
+			cmp.Compare(listed(stateOrder[a.Team], a.State), listed(stateOrder[b.Team], b.State)),
 			cmp.Compare(rank(a.StateType), rank(b.StateType)),
 			cmp.Compare(a.State, b.State),
 			b.UpdatedAt.Compare(a.UpdatedAt), // most recently updated first
@@ -83,6 +94,14 @@ func Build(issues []tracker.Issue, agents []agent.Agent) []Row {
 		}
 	}
 	return rows
+}
+
+// listed is a state's position in a configured order; unlisted states sort after.
+func listed(order []string, state string) int {
+	if i := slices.Index(order, state); i >= 0 {
+		return i
+	}
+	return len(order)
 }
 
 func rank(stateType string) int {
