@@ -89,3 +89,14 @@ func TestDialSendsAPIKeyAsBearer(t *testing.T) {
 		t.Fatalf("Authorization = %q", h)
 	}
 }
+
+func TestRepeatedCursorStops(t *testing.T) {
+	var calls []map[string]any
+	c := connectFake(t, fakeServer(t, map[string]string{
+		"":     `{"issues":[],"hasNextPage":true,"cursor":"loop"}`,
+		"loop": `{"issues":[],"hasNextPage":true,"cursor":"loop"}`,
+	}, &calls))
+	if _, err := c.Issues(context.Background(), "me"); err == nil || len(calls) != 2 {
+		t.Fatalf("err=%v calls=%d", err, len(calls))
+	}
+}

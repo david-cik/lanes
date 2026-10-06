@@ -61,6 +61,9 @@ func (c *Client) Issues(ctx context.Context, assignee string) ([]tracker.Issue, 
 		if next == "" {
 			return all, nil
 		}
+		if next == args["cursor"] {
+			return nil, fmt.Errorf("linear: list_issues: server repeated cursor %q", next)
+		}
 		args["cursor"] = next
 	}
 }
@@ -80,6 +83,9 @@ func (c *Client) Users(ctx context.Context) ([]tracker.User, error) {
 		all = append(all, users...)
 		if next == "" {
 			return all, nil
+		}
+		if next == args["cursor"] {
+			return nil, fmt.Errorf("linear: list_users: server repeated cursor %q", next)
 		}
 		args["cursor"] = next
 	}
