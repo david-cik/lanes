@@ -1,12 +1,20 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 )
 
 type choice struct{ label, value string }
+
+// action is a single-key choice in an action modal; run reports whether the modal
+// stays open (because it replaced itself, e.g. with an input).
+type action struct {
+	key, label string
+	run        func() (cmd tea.Cmd, keepOpen bool)
+}
 
 // modal is the one overlay at a time: a filterable list, a text input, or a yes/no.
 type modal struct {
@@ -19,6 +27,7 @@ type modal struct {
 	input    bool
 	text     string
 	confirm  bool
+	actions  []action
 	onChoose func(choice) tea.Cmd
 	onInput  func(string) tea.Cmd
 	onYes    func() tea.Cmd
@@ -42,6 +51,13 @@ func (md *modal) key(k tea.KeyPressMsg) (cmd tea.Cmd, done bool) {
 		return nil, true
 	}
 	switch {
+	case md.actions != nil:
+		for _, a := range md.actions {
+			if a.key == s {
+				cmd, keep := a.run()
+				return cmd, !keep
+			}
+		}
 	case md.confirm:
 		switch s {
 		case "y", "enter":
@@ -91,6 +107,8 @@ func dropLast(s string) string {
 
 func (md *modal) hint() string {
 	switch {
+	case md.actions != nil:
+		return "esc close (the request stays waiting)"
 	case md.confirm:
 		return "y/enter confirm · n/esc cancel"
 	case md.input:
@@ -107,6 +125,11 @@ func (md *modal) view(b *strings.Builder, width, body int) {
 		used++
 	}
 	switch {
+	case md.actions != nil:
+		for _, a := range md.actions {
+			b.WriteString(trunc(fmt.Sprintf("  %-4s %s", a.key, a.label), width) + "\n")
+			used++
+		}
 	case md.confirm:
 	case md.input:
 		b.WriteString("> " + md.text + "▏\n")

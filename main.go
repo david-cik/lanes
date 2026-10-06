@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 
@@ -32,8 +33,10 @@ const tmuxSession = "lanes"
 func main() {
 	// `lanes hook <tool> <event>` runs inside agent tools on every hook event: keep it
 	// fast (no config, no network) and silent on any failure.
-	if len(os.Args) == 4 && os.Args[1] == "hook" {
-		hook.Client(os.Stdin, os.Stdout, os.Getenv("LANES_SOCKET"), os.Getenv("LANES_AGENT_ID"), os.Args[2], os.Args[3])
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		if len(os.Args) == 4 {
+			hook.Client(os.Stdin, os.Stdout, os.Getenv("LANES_SOCKET"), os.Getenv("LANES_AGENT_ID"), os.Args[2], os.Args[3])
+		}
 		return
 	}
 	if err := run(); err != nil {
@@ -133,6 +136,17 @@ func run() error {
 			return err
 		}
 		opt.Tmux, opt.Panel, opt.Placeholder = tm, panel, placeholder
+
+		sock := filepath.Join(stateDir, "lanes.sock")
+		srv, err := hook.Listen(sock)
+		if err != nil {
+			return err
+		}
+		defer srv.Close() // waiting hooks hang up; each agent's own prompt takes over
+		if bin, err := os.Executable(); err == nil {
+			opt.Hooks, opt.HookBin, opt.Socket = srv.Events(), bin, sock
+		}
+		opt.Notify = notifier(tm, panel, cfg.NotifyOS)
 	}
 	_, err = tea.NewProgram(ui.New(opt)).Run()
 	return err
@@ -157,6 +171,23 @@ func takeOver(tm tmux.Client, panel string) (func(), error) {
 		return nil, err
 	}
 	return func() { tm.UnsetOpt(panel, tmux.OptPanel) }, nil
+}
+
+// notifier shows text as a tmux message on the panel's client and, if enabled, as a
+// desktop notification. Arguments go to exec directly: no shell sees ticket text.
+func notifier(tm tmux.Client, panel string, desktop bool) func(string) {
+	return func(text string) {
+		tm.DisplayMessage(panel, "lanes: "+text)
+		if !desktop {
+			return
+		}
+		switch {
+		case runtime.GOOS == "darwin":
+			exec.Command("osascript", "-e", "on run argv", "-e", "display notification (item 1 of argv) with title \"lanes\"", "-e", "end run", text).Run()
+		default:
+			exec.Command("notify-send", "lanes", text).Run()
+		}
+	}
 }
 
 // livePanel reports whether a pane is marked as a panel whose process still runs;

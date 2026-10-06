@@ -3,7 +3,9 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -231,6 +233,9 @@ func (m *Model) gotDetail(msg detailMsg) tea.Cmd {
 }
 
 func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
+	if _, ok := p.Adapter.(agent.Hooker); ok {
+		p.HookBin, p.Socket = m.opt.HookBin, m.opt.Socket
+	}
 	warning, err := launch.Check(m.live, p.Worktree, p.Ticket.Key)
 	if err != nil {
 		m.say("", err)
@@ -244,6 +249,12 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	}
 	if warning != "" {
 		lines = append(lines, "", waitS.Render("⚠ "+warning))
+	}
+	if _, err := os.Stat(p.Worktree); err != nil && p.Adapter.Name() == "claude" {
+		lines = append(lines, "", "Claude will ask whether to trust this new folder; answer in the right pane.")
+	}
+	if strings.Contains(p.HookBin, "go-build") {
+		lines = append(lines, "", waitS.Render("⚠ lanes is running via `go run`: the agent's hooks will break once it exits (use go install)"))
 	}
 	m.notice = ""
 	tm, store := m.opt.Tmux, m.opt.Store
@@ -266,9 +277,10 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 		return nil
 	}
 	m.live = append(m.live, msg.rec)
+	m.launchSeq = m.agentSeq // refreshes already in flight don't know this agent
 	m.focus(msg.rec.ID, msg.rec.Pane)
 	m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)
-	return m.fetchAgents()
+	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane))
 }
 
 // --- send / stop / link ---

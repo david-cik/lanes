@@ -22,6 +22,7 @@ type fakeTmux struct {
 	log      []string
 	sessions map[string]bool
 	gone     map[string]bool // panes that no longer exist
+	screen   string
 }
 
 func (f *fakeTmux) rec(s string) error { f.log = append(f.log, s); return nil }
@@ -43,8 +44,9 @@ func (f *fakeTmux) SendText(p, t string) error    { return f.rec("text " + p + "
 func (f *fakeTmux) SendKeys(p string, k ...string) error {
 	return f.rec("keys " + p + " " + strings.Join(k, ","))
 }
-func (f *fakeTmux) KillSession(n string) error { delete(f.sessions, n); return f.rec("kill " + n) }
-func (f *fakeTmux) HasSession(n string) bool   { return f.sessions[n] }
+func (f *fakeTmux) KillSession(n string) error       { delete(f.sessions, n); return f.rec("kill " + n) }
+func (f *fakeTmux) Capture(p string) (string, error) { return f.screen, nil }
+func (f *fakeTmux) HasSession(n string) bool         { return f.sessions[n] }
 
 type stopper struct{ agent.Adapter }
 

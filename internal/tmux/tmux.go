@@ -135,6 +135,12 @@ func (c Client) HasSession(name string) bool {
 	return err == nil
 }
 
+// DisplayMessage shows text in the status line of the client viewing target for 4s.
+func (c Client) DisplayMessage(target, text string) error {
+	_, err := c.run("display-message", "-l", "-d", "4000", "-t", target, "--", text) // -l: no format expansion of ticket text
+	return err
+}
+
 // Capture returns the visible text of a pane.
 func (c Client) Capture(pane string) (string, error) {
 	return c.run("capture-pane", "-p", "-t", pane)

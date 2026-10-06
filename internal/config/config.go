@@ -36,6 +36,7 @@ type Config struct {
 	WorktreeTemplate string   `toml:"worktree_template"`
 	PromptTemplate   string   `toml:"prompt_template"`
 	Preamble         string   `toml:"preamble"`
+	NotifyOS         bool     `toml:"notify_os"` // also send desktop notifications
 
 	Agents map[string]AgentConfig `toml:"agents"`
 	Teams  map[string]TeamConfig  `toml:"teams"`

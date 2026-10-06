@@ -134,3 +134,10 @@ func TestCtrlCQuitsFromModal(t *testing.T) {
 		t.Fatal("ctrl+c in a modal did not quit")
 	}
 }
+
+func keyName(s string) tea.KeyPressMsg {
+	if s == "tab" {
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	}
+	return key(s)
+}

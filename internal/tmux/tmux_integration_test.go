@@ -106,3 +106,14 @@ func TestPanesWithNoServer(t *testing.T) {
 		t.Fatalf("got %+v err=%v", ps, err)
 	}
 }
+
+func TestDisplayMessageIsLiteral(t *testing.T) {
+	c := server(t)
+	p, err := c.NewSession("s", t.TempDir(), nil, sleeper("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DisplayMessage(p, "fix #{pane_id} #[bold]"); err != nil {
+		t.Fatal(err)
+	}
+}

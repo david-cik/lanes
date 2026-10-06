@@ -148,6 +148,13 @@ func (s *Server) handle(c net.Conn) {
 		return
 	}
 	s.mu.Lock()
+	select {
+	case <-s.done: // closing: hang up now rather than register a conn Close won't see
+		s.mu.Unlock()
+		c.Close()
+		return
+	default:
+	}
 	s.open[id] = c
 	s.mu.Unlock()
 	var once sync.Once
@@ -193,7 +200,9 @@ func (s *Server) send(ev Event) {
 func (s *Server) Close() error {
 	var err error
 	s.closed.Do(func() {
+		s.mu.Lock()
 		close(s.done)
+		s.mu.Unlock()
 		err = s.ln.Close()
 		s.mu.Lock()
 		for id, c := range s.open {

@@ -15,6 +15,7 @@ import (
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/board"
 	"github.com/david-cik/lanes/internal/config"
+	"github.com/david-cik/lanes/internal/hook"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tracker"
 )
@@ -59,6 +60,7 @@ type Tmux interface {
 	SendKeys(pane string, keys ...string) error
 	KillSession(name string) error
 	HasSession(name string) bool
+	Capture(pane string) (string, error)
 }
 
 type Options struct {
@@ -74,6 +76,11 @@ type Options struct {
 	Issues       []tracker.Issue
 	LinearPoll   time.Duration
 	ExternalPoll time.Duration
+
+	Hooks   <-chan hook.Event // events from launched agents; nil = no hooks
+	HookBin string            // lanes executable launched agents' hooks call
+	Socket  string            // where those hooks connect
+	Notify  func(text string) // tmux / OS notification; nil = bell only
 }
 
 type Model struct {
@@ -98,9 +105,11 @@ type Model struct {
 
 	shown     string // record ID of the agent in the right slot
 	shownPane string
-	stopping  map[string]bool // record IDs being stopped; not controllable meanwhile
-	agentSeq  int             // numbers agent refreshes as they start
-	agentSeen int             // newest refresh applied; results older than it are dropped
+	stopping  map[string]bool       // record IDs being stopped; not controllable meanwhile
+	agentSeq  int                   // numbers agent refreshes as they start
+	agentSeen int                   // newest refresh applied; results older than it are dropped
+	launchSeq int                   // refreshes started at or before this predate the last launch
+	hooks     map[string]*hookState // by launch record ID
 	modal     *modal
 
 	now func() time.Time
@@ -108,7 +117,7 @@ type Model struct {
 
 func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
-		stopping: map[string]bool{}}
+		stopping: map[string]bool{}, hooks: map[string]*hookState{}}
 	if l, err := opt.Store.Links(); err == nil {
 		m.links = l
 	} else {
@@ -119,7 +128,7 @@ func New(opt Options) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.fetchAgents(), tick(m.opt.LinearPoll, issuesTick{}), tick(m.opt.ExternalPoll, agentsTick{}))
+	return tea.Batch(m.fetchAgents(), tick(m.opt.LinearPoll, issuesTick{}), tick(m.opt.ExternalPoll, agentsTick{}), m.waitHook())
 }
 
 func tick(d time.Duration, msg tea.Msg) tea.Cmd {
@@ -167,7 +176,9 @@ func (m *Model) stateOrder() map[string][]string {
 }
 
 func (m *Model) rebuild() {
-	m.rows = board.Build(m.issues, slices.Clone(m.agents), m.links, m.stateOrder())
+	agents := slices.Clone(m.agents)
+	m.overlay(agents)
+	m.rows = board.Build(m.issues, agents, m.links, m.stateOrder())
 	m.cursor = min(m.cursor, max(len(m.rows)-1, 0))
 }
 
@@ -197,8 +208,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuild()
 		}
 	case agentsMsg:
-		if msg.seq < m.agentSeen {
-			return m, nil // a newer refresh already landed (e.g. right after a stop)
+		if msg.seq < m.agentSeen || (m.launchSeq > 0 && msg.seq <= m.launchSeq) {
+			return m, nil // stale: a newer refresh landed, or it predates the last launch
 		}
 		m.agentSeen = msg.seq
 		m.agentErr = msg.err
@@ -206,6 +217,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.agents, m.live = msg.agents, msg.live
 			m.dropVanishedShown()
 			m.forgetStopped()
+			m.forgetHooks()
 			m.rebuild()
 		}
 	case usersMsg:
@@ -225,6 +237,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.fetchAgents()
 	case launchedMsg:
 		return m, m.launched(msg)
+	case hookMsg:
+		return m, tea.Batch(m.hook(hook.Event(msg)), m.waitHook())
+	case trustMsg:
+		return m, m.trusted(msg)
 	case detailMsg:
 		return m, m.gotDetail(msg)
 	case tea.KeyPressMsg:
@@ -276,6 +292,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.stopSelected()
 	case "l":
 		return m.linkSelected()
+	case "a":
+		return m.approve()
 	}
 	return nil
 }
@@ -321,7 +339,12 @@ func (m *Model) View() tea.View {
 	var b strings.Builder
 	header := fmt.Sprintf("lanes · %s · %d tickets · %d agents · updated %s",
 		m.label, len(m.issues), len(m.agents), m.updated.Format("15:04:05"))
-	b.WriteString(bold.Render(trunc(header, m.width)) + "\n")
+	if n := m.waitingCount(); n > 0 { // first, so a narrow panel never cuts it off
+		w := fmt.Sprintf("⚠ %d waiting (a) · ", n)
+		b.WriteString(waitS.Render(trunc(w, m.width)) + bold.Render(trunc(header, m.width-len([]rune(w)))) + "\n")
+	} else {
+		b.WriteString(bold.Render(trunc(header, m.width)) + "\n")
+	}
 
 	body := max(m.height-2, 1)
 	if m.modal != nil {
@@ -344,7 +367,7 @@ func (m *Model) View() tea.View {
 	case m.opt.Tmux == nil:
 		b.WriteString(faint.Render("j/k move · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)"))
 	default:
-		b.WriteString(faint.Render("enter show · n new · s send · x stop · l link · r refresh · u assignee · q quit"))
+		b.WriteString(faint.Render("enter show · a approve · n new · s send · x stop · l link · r refresh · u assignee · q quit"))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true
@@ -402,6 +425,7 @@ func (m *Model) line(r board.Row) string {
 	case board.AgentRow:
 		a := r.Agent
 		s := fmt.Sprintf("%s%s %s %s %-7s %s", ind, glyph(a.Status), a.Tool, a.Name, a.Status, age(m.now().Sub(a.Since)))
+		s += m.waitingNote(a)
 		if a.Branch != "" && a.Branch != a.Name {
 			s += " · " + a.Branch
 		}
@@ -427,6 +451,8 @@ func glyph(s agent.Status) string {
 		return "○"
 	case agent.Waiting:
 		return "⚠"
+	case agent.Done:
+		return "·"
 	}
 	return "◌"
 }
