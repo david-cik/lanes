@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/david-cik/lanes/internal/agent"
@@ -16,7 +17,7 @@ func TestListExternal(t *testing.T) {
 		 {"pid":3,"cwd":"/src","kind":"interactive","startedAt":0,"sessionId":"s3","name":"odd","status":"weird"},
 		 {"pid":4,"cwd":"/src","kind":"interactive","startedAt":0,"sessionId":"s4","name":"ask","status":"waiting"}]`), nil
 	}}
-	got, err := a.ListExternal(context.Background())
+	got, err := a.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,8 +32,27 @@ func TestListExternal(t *testing.T) {
 
 func TestMissingBinaryIsEmpty(t *testing.T) {
 	a := &Adapter{run: func(context.Context) ([]byte, error) { return nil, exec.ErrNotFound }}
-	got, err := a.ListExternal(context.Background())
+	got, err := a.List(context.Background())
 	if err != nil || got != nil {
 		t.Fatalf("got %+v err=%v", got, err)
+	}
+}
+
+func TestCommand(t *testing.T) {
+	c := New().Command(agent.LaunchSpec{Name: "ABC-1 fix", Prompt: "--do it", Args: []string{"--model", "haiku"}})
+	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(c.SessionID) {
+		t.Fatalf("session id %q", c.SessionID)
+	}
+	want := []string{"claude", "--session-id", c.SessionID, "-n", "ABC-1 fix", "--model", "haiku", " --do it"}
+	if len(c.Argv) != len(want) {
+		t.Fatalf("argv %q", c.Argv)
+	}
+	for i := range want {
+		if c.Argv[i] != want[i] {
+			t.Fatalf("argv %q, want %q", c.Argv, want)
+		}
+	}
+	if New().Command(agent.LaunchSpec{}).SessionID == c.SessionID {
+		t.Fatal("session ids repeat")
 	}
 }

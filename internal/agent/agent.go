@@ -25,14 +25,34 @@ type Agent struct {
 	Branch    string
 	Status    Status
 	Since     time.Time
-	External  bool // not launched by lanes: read-only
-	TicketKey string
+	External  bool   // not launched by lanes: read-only
+	TicketKey string // preset for launched agents; otherwise filled by matching
+	RecordID  string // lanes launch record, for launched agents
+	Pane      string // tmux pane, for launched agents
 }
 
-// Adapter finds sessions of one agent tool. M1 only lists externally started ones.
+// LaunchSpec is what lanes asks an adapter to start.
+type LaunchSpec struct {
+	Name   string   // display name, e.g. "ABC-12 fix-login"
+	Prompt string   // initial prompt; may be empty
+	Args   []string // extra CLI args from config
+}
+
+// Command is how to run a tool in a tmux pane.
+type Command struct {
+	Argv      []string
+	Env       []string
+	SessionID string // pre-assigned tool session id, if the tool supports it
+}
+
+// Adapter knows how to find, start, and stop sessions of one agent tool.
 type Adapter interface {
 	Name() string
-	ListExternal(ctx context.Context) ([]Agent, error)
+	// List returns the tool's sessions it can see, launched by lanes or not.
+	List(ctx context.Context) ([]Agent, error)
+	Command(spec LaunchSpec) Command
+	// Stop returns text to type (then Enter) and/or tmux keys that ask the tool to exit.
+	Stop() (text string, keys []string)
 }
 
 // FillBranches sets Branch from each agent's working directory (one git call per dir).

@@ -3,10 +3,12 @@ package claude
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/david-cik/lanes/internal/agent"
@@ -25,8 +27,8 @@ func New() *Adapter {
 
 func (*Adapter) Name() string { return "claude" }
 
-// ListExternal lists running Claude sessions. A missing claude binary is not an error.
-func (a *Adapter) ListExternal(ctx context.Context) ([]agent.Agent, error) {
+// List lists running Claude sessions. A missing claude binary is not an error.
+func (a *Adapter) List(ctx context.Context) ([]agent.Agent, error) {
 	b, err := a.run(ctx)
 	if errors.Is(err, exec.ErrNotFound) {
 		return nil, nil
@@ -52,6 +54,35 @@ func (a *Adapter) ListExternal(ctx context.Context) ([]agent.Agent, error) {
 		})
 	}
 	return out, nil
+}
+
+// Command starts an interactive session with a pre-assigned id so lanes can find it
+// again in `claude agents --json`.
+func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
+	id := uuid()
+	argv := []string{"claude", "--session-id", id}
+	if spec.Name != "" {
+		argv = append(argv, "-n", spec.Name)
+	}
+	argv = append(argv, spec.Args...)
+	if spec.Prompt != "" {
+		p := spec.Prompt
+		if strings.HasPrefix(p, "-") { // don't let a prompt be parsed as a flag
+			p = " " + p
+		}
+		argv = append(argv, p)
+	}
+	return agent.Command{Argv: argv, SessionID: id}
+}
+
+func (*Adapter) Stop() (string, []string) { return "/exit", nil }
+
+func uuid() string {
+	var b [16]byte
+	rand.Read(b[:])
+	b[6] = b[6]&0x0f | 0x40 // version 4
+	b[8] = b[8]&0x3f | 0x80 // RFC 4122 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 func status(s string) agent.Status {

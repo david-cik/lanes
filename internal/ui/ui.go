@@ -99,7 +99,7 @@ func (m *Model) fetchAgents() tea.Cmd {
 		var all []agent.Agent
 		var errs []error
 		for _, a := range ads {
-			got, err := a.ListExternal(ctx)
+			got, err := a.List(ctx)
 			if err != nil {
 				errs = append(errs, err)
 			}
