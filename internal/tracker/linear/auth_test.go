@@ -2,10 +2,12 @@ package linear
 
 import (
 	"errors"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 )
@@ -56,5 +58,42 @@ func TestStoreEmpty(t *testing.T) {
 	got, err := Store{File: filepath.Join(t.TempDir(), "none.json")}.load()
 	if got != nil || err != nil {
 		t.Fatalf("got %+v err=%v", got, err)
+	}
+}
+
+func TestFallbackFileTightensExistingMode(t *testing.T) {
+	keyring.MockInitWithError(errors.New("no keychain"))
+	st := Store{File: filepath.Join(t.TempDir(), "token.json")}
+	os.WriteFile(st.File, []byte("{}"), 0o644)
+	if err := st.save(sample()); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(st.File); fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v", fi.Mode().Perm())
+	}
+}
+
+func TestCallback(t *testing.T) {
+	res := make(chan *auth.AuthorizationResult, 1)
+	h := callback(res)
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/other?code=x", nil))
+	if w.Code != 404 || len(res) != 0 {
+		t.Fatalf("non-callback path accepted: %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/callback?code=c1&state=s1&iss=https://issuer.example", nil))
+	r := <-res
+	if r.Code != "c1" || r.State != "s1" || r.Iss != "https://issuer.example" {
+		t.Fatalf("got %+v", r)
+	}
+
+	// A second redirect must not block or replace the first result.
+	res <- r
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/callback?code=c2", nil))
+	if got := <-res; got.Code != "c1" {
+		t.Fatalf("first result replaced: %+v", got)
 	}
 }

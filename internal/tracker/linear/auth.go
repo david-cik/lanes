@@ -78,7 +78,10 @@ func (st Store) save(s *saved) error {
 	if err := os.MkdirAll(filepath.Dir(st.File), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(st.File, b, 0o600)
+	if err := os.WriteFile(st.File, b, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(st.File, 0o600) // WriteFile keeps the mode of an existing file
 }
 
 // Delete removes stored credentials from both places.
@@ -185,22 +188,7 @@ func browserLogin(port int) auth.AuthorizationCodeFetcher {
 			return nil, fmt.Errorf("linear: login callback port %d busy: %w", port, err)
 		}
 		res := make(chan *auth.AuthorizationResult, 1)
-		srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/callback" {
-				http.NotFound(w, r)
-				return
-			}
-			q := r.URL.Query()
-			if e := q.Get("error"); e != "" {
-				io.WriteString(w, "lanes: Linear login failed: "+e+". You can close this tab.")
-			} else {
-				io.WriteString(w, "lanes: signed in to Linear. You can close this tab.")
-			}
-			select {
-			case res <- &auth.AuthorizationResult{Code: q.Get("code"), State: q.Get("state"), Iss: q.Get("iss")}:
-			default:
-			}
-		})}
+		srv := &http.Server{Handler: callback(res)}
 		go srv.Serve(l)
 		defer srv.Close()
 
@@ -219,6 +207,27 @@ func browserLogin(port int) auth.AuthorizationCodeFetcher {
 			return nil, fmt.Errorf("linear: login timed out: %w", ctx.Err())
 		}
 	}
+}
+
+// callback handles the loopback redirect and delivers the first result to res.
+func callback(res chan<- *auth.AuthorizationResult) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/callback" {
+			http.NotFound(w, r)
+			return
+		}
+		q := r.URL.Query()
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if e := q.Get("error"); e != "" {
+			io.WriteString(w, "lanes: Linear login failed: "+e+". You can close this tab.")
+		} else {
+			io.WriteString(w, "lanes: signed in to Linear. You can close this tab.")
+		}
+		select {
+		case res <- &auth.AuthorizationResult{Code: q.Get("code"), State: q.Get("state"), Iss: q.Get("iss")}:
+		default:
+		}
+	})
 }
 
 func openBrowser(url string) {

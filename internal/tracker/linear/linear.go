@@ -48,6 +48,7 @@ func (c *Client) Close() error { return c.s.Close() }
 func (c *Client) Issues(ctx context.Context, assignee string) ([]tracker.Issue, error) {
 	var all []tracker.Issue
 	args := map[string]any{"assignee": assignee, "fields": issueFields, "limit": 250}
+	seen := map[string]bool{}
 	for {
 		b, err := c.call(ctx, "list_issues", args)
 		if err != nil {
@@ -61,9 +62,10 @@ func (c *Client) Issues(ctx context.Context, assignee string) ([]tracker.Issue, 
 		if next == "" {
 			return all, nil
 		}
-		if next == args["cursor"] {
+		if seen[next] {
 			return nil, fmt.Errorf("linear: list_issues: server repeated cursor %q", next)
 		}
+		seen[next] = true
 		args["cursor"] = next
 	}
 }
@@ -71,6 +73,7 @@ func (c *Client) Issues(ctx context.Context, assignee string) ([]tracker.Issue, 
 func (c *Client) Users(ctx context.Context) ([]tracker.User, error) {
 	var all []tracker.User
 	args := map[string]any{"limit": 250}
+	seen := map[string]bool{}
 	for {
 		b, err := c.call(ctx, "list_users", args)
 		if err != nil {
@@ -84,9 +87,10 @@ func (c *Client) Users(ctx context.Context) ([]tracker.User, error) {
 		if next == "" {
 			return all, nil
 		}
-		if next == args["cursor"] {
+		if seen[next] {
 			return nil, fmt.Errorf("linear: list_users: server repeated cursor %q", next)
 		}
+		seen[next] = true
 		args["cursor"] = next
 	}
 }
