@@ -337,6 +337,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.linkSelected()
 	case "a":
 		return m.approve()
+	case "A":
+		return m.adoptSelected()
 	}
 	return nil
 }
@@ -421,7 +423,7 @@ func (m *Model) View() tea.View {
 	case m.opt.Tmux == nil:
 		b.WriteString(faint.Render(trunc("j/k move · d details · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)", m.width)))
 	default:
-		b.WriteString(faint.Render(trunc("enter show · d details · a approve · n new · s send · x stop · l link · r refresh · u assignee · q quit", m.width)))
+		b.WriteString(faint.Render(trunc("enter show · d details · a approve · n new · A adopt · s send · x stop · l link · r refresh · u assignee · q quit", m.width)))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true

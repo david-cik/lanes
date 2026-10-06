@@ -73,7 +73,11 @@ func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
 	for _, v := range inherited {
 		argv = append(argv, "-u", v)
 	}
-	argv = append(argv, "claude", "--session-id", id)
+	argv = append(argv, "claude")
+	if spec.ResumeFrom != "" {
+		argv = append(argv, "--resume", spec.ResumeFrom, "--fork-session") // verified: original keeps running
+	}
+	argv = append(argv, "--session-id", id)
 	if spec.HookBin != "" {
 		argv = append(argv, "--settings", HookSettings(spec.HookBin))
 	}
@@ -92,6 +96,8 @@ func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
 }
 
 func (*Adapter) Stop() (string, []string) { return "/exit", nil }
+
+func (*Adapter) CanFork() bool { return true }
 
 func uuid() string {
 	var b [16]byte

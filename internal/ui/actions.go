@@ -68,7 +68,7 @@ func (m *Model) controllable() (*agent.Agent, bool) {
 	case !ok:
 		m.say("", fmt.Errorf("select an agent"))
 	case a.RecordID == "":
-		m.say("", fmt.Errorf("%s was not started by lanes, so lanes can't control it (l links it to a ticket)", a.Name))
+		m.say("", fmt.Errorf("%s was not started by lanes, so lanes can't control it (A adopts it, l links it to a ticket)", a.Name))
 	case m.stopping[a.RecordID]:
 		m.say("", fmt.Errorf("%s is stopping", a.Name))
 	case m.opt.Tmux == nil:
@@ -388,6 +388,98 @@ func (m *Model) linkSelected() tea.Cmd {
 				m.say("linked "+name+" to "+c.value, err)
 			}
 			return nil
+		}}
+	return nil
+}
+
+// --- adopt ---
+
+// adoptSelected forks a session lanes didn't start into a lanes-managed pane, in the
+// session's own directory. The original keeps running untouched.
+func (m *Model) adoptSelected() tea.Cmd {
+	a, ok := m.selectedAgent()
+	switch {
+	case !ok:
+		m.say("", fmt.Errorf("select a session to adopt"))
+		return nil
+	case !a.External:
+		m.say("", fmt.Errorf("lanes already runs %s", a.Name))
+		return nil
+	case m.opt.Tmux == nil:
+		m.say("", fmt.Errorf("run lanes inside tmux to adopt sessions"))
+		return nil
+	case a.Cwd == "":
+		m.say("", fmt.Errorf("%s has no known directory", a.Name))
+		return nil
+	}
+	ad := m.adapter(a.Tool)
+	if f, ok := ad.(agent.Forker); !ok || !f.CanFork() {
+		m.say("", fmt.Errorf("lanes can't adopt %s sessions", a.Tool))
+		return nil
+	}
+	sess := *a
+	adopt := func(issue tracker.Issue) tea.Cmd {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		d := tracker.IssueDetail{Issue: issue}
+		if c, ok := m.issueDetails[issue.Key]; ok && c.err == nil {
+			d = c.detail
+		}
+		p := launch.AdoptPlan(ctx, d, sess.Cwd, sess.ID, ad, m.opt.Config)
+		return m.confirmAdopt(p, sess.Name)
+	}
+	for _, i := range m.issues {
+		if i.Key == a.TicketKey {
+			return adopt(i)
+		}
+	}
+	var items []choice
+	for _, i := range m.issues {
+		items = append(items, choice{i.Key + "  " + i.Title, i.Key})
+	}
+	m.modal = &modal{title: "Adopt " + a.Name + " — for which ticket?", items: items,
+		onChoose: func(c choice) tea.Cmd {
+			for _, i := range m.issues {
+				if i.Key == c.value {
+					return adopt(i)
+				}
+			}
+			return nil
+		}}
+	return nil
+}
+
+func (m *Model) confirmAdopt(p launch.Plan, name string) tea.Cmd {
+	if _, ok := p.Adapter.(agent.Hooker); ok {
+		p.HookBin, p.Socket = m.opt.HookBin, m.opt.Socket
+	}
+	if _, err := launch.Check(m.live, p.Worktree, p.Ticket.Key); err != nil {
+		m.say("", err)
+		return nil
+	}
+	branch := p.Branch
+	if branch == "" {
+		branch = "(none)"
+	}
+	lines := []string{
+		"tool:   " + p.Adapter.Name(),
+		"folder: " + home(p.Worktree),
+		"branch: " + branch,
+		"",
+		"lanes starts a copy of this conversation in its own pane.",
+		"The original keeps running in its terminal — close it when you're done.",
+	}
+	tm, store := m.opt.Tmux, m.opt.Store
+	m.notice = ""
+	m.modal = &modal{confirm: true, title: "Adopt " + name + " for " + p.Ticket.Key + "?", lines: lines,
+		onYes: func() tea.Cmd {
+			m.say("adopting "+name+"…", nil)
+			return func() tea.Msg {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				rec, err := launch.Run(ctx, p, tm, store)
+				return launchedMsg{rec, err}
+			}
 		}}
 	return nil
 }

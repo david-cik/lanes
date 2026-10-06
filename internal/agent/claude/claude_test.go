@@ -56,3 +56,12 @@ func TestCommand(t *testing.T) {
 		t.Fatal("session ids repeat")
 	}
 }
+
+func TestCommandFork(t *testing.T) {
+	c := New().Command(agent.LaunchSpec{ResumeFrom: "orig-id", Name: "ABC-1 x"})
+	i := slices.Index(c.Argv, "claude")
+	want := []string{"claude", "--resume", "orig-id", "--fork-session", "--session-id", c.SessionID, "-n", "ABC-1 x"}
+	if !slices.Equal(c.Argv[i:], want) {
+		t.Fatalf("argv %q", c.Argv[i:])
+	}
+}

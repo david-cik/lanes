@@ -38,7 +38,13 @@ type LaunchSpec struct {
 	Prompt  string   // initial prompt; may be empty
 	Args    []string // extra CLI args from config
 	HookBin string   // lanes executable for `lanes hook`; empty = no hooks
+	// ResumeFrom forks an existing session of this tool (its conversation carries over;
+	// the original keeps running). Only for adapters that implement Forker.
+	ResumeFrom string
 }
+
+// Forker is implemented by adapters that can fork an existing session into a new one.
+type Forker interface{ CanFork() bool }
 
 // Command is how to run a tool in a tmux pane.
 type Command struct {

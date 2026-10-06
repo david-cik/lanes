@@ -249,3 +249,43 @@ func TestStoppingAgentIsNotControllable(t *testing.T) {
 		t.Fatalf("log=%v notice=%q", ft.log[n:], m.notice)
 	}
 }
+
+func TestAdoptForksExternalSessionInPlace(t *testing.T) {
+	m, ft := controlModel(t)
+	m.opt.Adapters = []agent.Adapter{claudeLike{stopper{}}}
+	snap := m.opt.Fleet.(*fleetSnap)
+	snap.agents[2].Cwd = t.TempDir()
+	m.agents = append([]agent.Agent{}, snap.agents...)
+	m.rebuild()
+	m.cursorTo(t, "outside")
+	m.Update(keyName("A"))
+	if m.modal == nil || len(m.modal.items) == 0 { // not linked to a ticket: picker first
+		t.Fatalf("expected ticket picker, got %+v", m.modal)
+	}
+	m.Update(key("enter")) // ABC-1
+	if m.modal == nil || !m.modal.confirm || !strings.Contains(strings.Join(m.modal.lines, "\n"), "original keeps running") {
+		t.Fatalf("confirm %+v", m.modal)
+	}
+	_, cmd := m.Update(key("y"))
+	m.Update(cmd()) // launchedMsg (its follow-up commands poll the pane; not needed here)
+	if !strings.Contains(strings.Join(ft.log, "|"), "new lanes-") {
+		t.Fatalf("no session started: %v", ft.log)
+	}
+	if len(m.live) != 3 || m.live[2].Worktree != snap.agents[2].Cwd {
+		t.Fatalf("live %+v", m.live)
+	}
+}
+
+func TestAdoptRefusesManagedAgent(t *testing.T) {
+	m, _ := controlModel(t)
+	m.cursorTo(t, "one")
+	m.Update(keyName("A"))
+	if m.modal != nil || !strings.Contains(m.notice, "already runs") {
+		t.Fatalf("notice %q", m.notice)
+	}
+}
+
+// claudeLike is a stopper that can fork.
+type claudeLike struct{ stopper }
+
+func (claudeLike) CanFork() bool { return true }

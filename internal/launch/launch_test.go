@@ -203,3 +203,24 @@ func TestRunKillsUntrackableSession(t *testing.T) {
 		t.Fatalf("record saved for a killed session: %+v", all)
 	}
 }
+
+func TestAdoptRunsInPlace(t *testing.T) {
+	repo := clone(t, t.TempDir(), "app", "")
+	sub := filepath.Join(repo, "sub")
+	os.MkdirAll(sub, 0o755)
+	p := AdoptPlan(context.Background(), tracker.IssueDetail{Issue: tracker.Issue{Key: "ABC-7", Title: "t"}}, sub, "orig", fake{}, config.Default())
+	if !p.InPlace || p.Worktree != sub || p.Branch != "main" || p.ResumeFrom != "orig" || p.Repo.Name != "app" {
+		t.Fatalf("plan %+v", p)
+	}
+	tm := &fakeTmux{}
+	rec, err := Run(context.Background(), p, tm, state.Store{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Worktree != sub {
+		t.Fatalf("rec %+v", rec)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".worktrees")); err == nil {
+		t.Fatal("adopt created a worktree")
+	}
+}

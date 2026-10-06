@@ -172,12 +172,30 @@ type Plan struct {
 	Warning  string
 	HookBin  string // lanes executable the agent's hooks call; "" = no hooks
 	Socket   string // panel socket the hooks report to
+
+	InPlace    bool   // run in Worktree as it is (adopting a session): no worktree or branch is created
+	ResumeFrom string // tool session to fork (adopt)
+}
+
+// AdoptPlan forks an existing session in its own directory, for ticket d.
+func AdoptPlan(ctx context.Context, d tracker.IssueDetail, dir, sessionID string, a agent.Adapter, cfg config.Config) Plan {
+	repo := dir
+	if top, err := git(ctx, dir, "rev-parse", "--show-toplevel"); err == nil {
+		repo = top
+	}
+	branch, _ := git(ctx, dir, "branch", "--show-current")
+	return Plan{
+		Ticket: d, Repo: Repo{filepath.Base(repo), repo}, Adapter: a, Args: cfg.Agents[a.Name()].Args,
+		Branch: branch, Worktree: dir, InPlace: true, ResumeFrom: sessionID,
+	}
 }
 
 // Run creates the worktree, starts the agent in its own tmux session, and saves the record.
 func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record, error) {
-	if err := Worktree(ctx, p.Repo.Path, p.Branch, p.Worktree); err != nil {
-		return state.Record{}, err
+	if !p.InPlace {
+		if err := Worktree(ctx, p.Repo.Path, p.Branch, p.Worktree); err != nil {
+			return state.Record{}, err
+		}
 	}
 	rec := state.Record{
 		ID: state.NewID(), Tool: p.Adapter.Name(), TicketKey: p.Ticket.Key, Repo: p.Repo.Path,
@@ -185,6 +203,7 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 	}
 	cmd := p.Adapter.Command(agent.LaunchSpec{
 		Name: p.Ticket.Key + " " + Slug(p.Ticket.Title), Prompt: p.Prompt, Args: p.Args, HookBin: p.HookBin,
+		ResumeFrom: p.ResumeFrom,
 	})
 	rec.SessionID = cmd.SessionID
 	env := append(cmd.Env, "LANES_AGENT_ID="+rec.ID)
