@@ -74,6 +74,9 @@ func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
 		argv = append(argv, "-u", v)
 	}
 	argv = append(argv, "claude", "--session-id", id)
+	if spec.HookBin != "" {
+		argv = append(argv, "--settings", HookSettings(spec.HookBin))
+	}
 	if spec.Name != "" {
 		argv = append(argv, "-n", spec.Name)
 	}

@@ -14,6 +14,7 @@ const (
 	Working Status = "working"
 	Idle    Status = "idle"
 	Waiting Status = "waiting" // needs the user: a permission prompt or question
+	Done    Status = "done"
 	Unknown Status = "unknown"
 )
 
@@ -33,9 +34,10 @@ type Agent struct {
 
 // LaunchSpec is what lanes asks an adapter to start.
 type LaunchSpec struct {
-	Name   string   // display name, e.g. "ABC-12 fix-login"
-	Prompt string   // initial prompt; may be empty
-	Args   []string // extra CLI args from config
+	Name    string   // display name, e.g. "ABC-12 fix-login"
+	Prompt  string   // initial prompt; may be empty
+	Args    []string // extra CLI args from config
+	HookBin string   // lanes executable for `lanes hook`; empty = no hooks
 }
 
 // Command is how to run a tool in a tmux pane.
@@ -73,4 +75,39 @@ func FillBranches(ctx context.Context, agents []Agent) {
 		}
 		agents[i].Branch = b
 	}
+}
+
+// Hooker is implemented by adapters whose tool can report events to lanes.
+type Hooker interface {
+	// ParseHook turns one hook payload into a status change and, for a permission
+	// prompt, a request lanes can answer.
+	ParseHook(event string, payload []byte) (HookEvent, error)
+	// EncodeDecision renders what `lanes hook` prints back to the tool.
+	EncodeDecision(d Decision) []byte
+}
+
+type HookEvent struct {
+	Status  Status   // "" = no change
+	Request *Request // set when the tool asks for permission
+}
+
+type Request struct {
+	Tool        string
+	Summary     string // one line: the command, file, or URL involved
+	Suggestions []Suggestion
+}
+
+// Suggestion is a permission rule the tool offers to save; lanes sends it back
+// unchanged except for where to save it (and, for one-rule suggestions, its text).
+type Suggestion struct {
+	Label string
+	Rule  string // editable rule text; "" when the suggestion isn't a single rule
+	Raw   []byte
+}
+
+type Decision struct {
+	Behavior string // "allow", "deny", or "" for no decision
+	Message  string
+	Save     *Suggestion // rule to save with the allow
+	SaveTo   string      // "session" or "localSettings"
 }
