@@ -9,8 +9,10 @@ import (
 	"github.com/david-cik/lanes/internal/tracker"
 )
 
-// keyRe finds PREFIX-123; the leading class (not \b) lets "_" separate, e.g. feat_abc-12.
-var keyRe = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])([a-z][a-z0-9]*)-0*(\d+)`)
+// keyRe finds PREFIX-123. The leading class (not \b) lets "_" separate, e.g. feat_abc-12.
+// Group 3 peeks at the next character without lookahead: a letter or digit there
+// (abc-12x, abc-2026q3) means it is not a key.
+var keyRe = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])([a-z][a-z0-9]*)-0*(\d+)([a-z0-9]?)`)
 
 // Prefixes returns the lower-case team prefixes seen in issue keys (ABC-12 → abc).
 func Prefixes(issues []tracker.Issue) map[string]bool {
@@ -27,7 +29,7 @@ func Prefixes(issues []tracker.Issue) map[string]bool {
 func Match(a agent.Agent, prefixes map[string]bool) string {
 	for _, s := range []string{a.Branch, a.Name, a.Cwd} {
 		for _, m := range keyRe.FindAllStringSubmatch(s, -1) {
-			if prefixes[strings.ToLower(m[1])] {
+			if m[3] == "" && prefixes[strings.ToLower(m[1])] {
 				return strings.ToUpper(m[1]) + "-" + m[2]
 			}
 		}

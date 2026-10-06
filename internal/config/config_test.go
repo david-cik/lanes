@@ -63,9 +63,13 @@ func TestRelativeXDGIgnored(t *testing.T) {
 }
 
 func TestPollFloor(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "config.toml")
-	os.WriteFile(p, []byte("linear_poll = \"0s\"\n"), 0o600)
-	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "linear_poll") {
-		t.Fatalf("want floor error, got %v", err)
+	for _, key := range []string{"linear_poll", "external_poll"} {
+		p := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(p, []byte(key+" = \"0s\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(p); err == nil || !strings.Contains(err.Error(), key) {
+			t.Fatalf("%s: want floor error, got %v", key, err)
+		}
 	}
 }
