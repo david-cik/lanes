@@ -13,6 +13,7 @@ type Status string
 const (
 	Working Status = "working"
 	Idle    Status = "idle"
+	Waiting Status = "waiting" // needs the user: a permission prompt or question
 	Unknown Status = "unknown"
 )
 

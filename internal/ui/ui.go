@@ -234,6 +234,7 @@ var (
 	errSty = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	stateS = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	workS  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	waitS  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 )
 
 func (m *Model) View() tea.View {
@@ -316,8 +317,11 @@ func (m *Model) style(r board.Row) lipgloss.Style {
 	case board.StateRow:
 		return stateS
 	case board.AgentRow:
-		if r.Agent.Status == agent.Working {
+		switch r.Agent.Status {
+		case agent.Working:
 			return workS
+		case agent.Waiting:
+			return waitS
 		}
 		return faint
 	}
@@ -352,6 +356,8 @@ func glyph(s agent.Status) string {
 		return "●"
 	case agent.Idle:
 		return "○"
+	case agent.Waiting:
+		return "⚠"
 	}
 	return "◌"
 }

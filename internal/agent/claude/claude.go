@@ -60,6 +60,8 @@ func status(s string) agent.Status {
 		return agent.Working
 	case "idle":
 		return agent.Idle
+	case "waiting":
+		return agent.Waiting
 	}
 	return agent.Unknown
 }
