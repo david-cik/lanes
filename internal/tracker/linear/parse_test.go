@@ -43,3 +43,15 @@ func TestParseUsersDropsInactive(t *testing.T) {
 		t.Fatalf("got %+v err=%v", got, err)
 	}
 }
+
+func TestParseIssueDetail(t *testing.T) {
+	d, err := parseIssue([]byte(`{"id":"ABC-7","title":"T","status":"Todo","statusType":"unstarted","team":"Alpha",
+	 "description":"Touches ` + "`widget-api`" + `.",
+	 "attachments":[{"url":"https://github.com/acme/widget-api/pull/42"},{"url":"https://docs.example/x"},{"url":"https://github.com/acme/widget-api/issues/3"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Key != "ABC-7" || d.Description != "Touches `widget-api`." || len(d.PRURLs) != 1 || d.PRURLs[0] != "https://github.com/acme/widget-api/pull/42" {
+		t.Fatalf("got %+v", d)
+	}
+}

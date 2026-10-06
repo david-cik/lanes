@@ -70,6 +70,18 @@ func (c *Client) Issues(ctx context.Context, assignee string) ([]tracker.Issue, 
 	}
 }
 
+func (c *Client) Issue(ctx context.Context, key string) (tracker.IssueDetail, error) {
+	b, err := c.call(ctx, "get_issue", map[string]any{"id": key})
+	if err != nil {
+		return tracker.IssueDetail{}, err
+	}
+	d, err := parseIssue(b)
+	if err != nil {
+		return d, fmt.Errorf("linear: get_issue: %w", err)
+	}
+	return d, nil
+}
+
 func (c *Client) Users(ctx context.Context) ([]tracker.User, error) {
 	var all []tracker.User
 	args := map[string]any{"limit": 250}

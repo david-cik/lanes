@@ -19,6 +19,9 @@ func (f *fakeTracker) Issues(_ context.Context, who string) ([]tracker.Issue, er
 	f.calls = append(f.calls, who)
 	return nil, nil
 }
+func (f *fakeTracker) Issue(_ context.Context, key string) (tracker.IssueDetail, error) {
+	return tracker.IssueDetail{Issue: tracker.Issue{Key: key}}, nil
+}
 func (f *fakeTracker) Users(context.Context) ([]tracker.User, error) {
 	return []tracker.User{{ID: "u1", Name: "Ada"}, {ID: "u2", Name: "Grace"}}, nil
 }

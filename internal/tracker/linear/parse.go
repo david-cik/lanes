@@ -2,6 +2,7 @@ package linear
 
 import (
 	"encoding/json"
+	"regexp"
 	"time"
 
 	"github.com/david-cik/lanes/internal/tracker"
@@ -73,4 +74,40 @@ func (p page) next() string {
 		return p.Cursor
 	}
 	return ""
+}
+
+var prURL = regexp.MustCompile(`^https://github\.com/[^/]+/[^/]+/pull/\d+`)
+
+// parseIssue decodes get_issue: the list fields plus description and PR attachments.
+func parseIssue(b []byte) (tracker.IssueDetail, error) {
+	var r struct {
+		ID            string    `json:"id"`
+		Title         string    `json:"title"`
+		URL           string    `json:"url"`
+		GitBranchName string    `json:"gitBranchName"`
+		Status        string    `json:"status"`
+		StatusType    string    `json:"statusType"`
+		Team          string    `json:"team"`
+		UpdatedAt     time.Time `json:"updatedAt"`
+		Description   string    `json:"description"`
+		Attachments   []struct {
+			URL string `json:"url"`
+		} `json:"attachments"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return tracker.IssueDetail{}, err
+	}
+	d := tracker.IssueDetail{
+		Issue: tracker.Issue{
+			Key: r.ID, Title: r.Title, URL: r.URL, Team: r.Team, State: r.Status,
+			StateType: r.StatusType, BranchName: r.GitBranchName, UpdatedAt: r.UpdatedAt,
+		},
+		Description: r.Description,
+	}
+	for _, a := range r.Attachments {
+		if prURL.MatchString(a.URL) {
+			d.PRURLs = append(d.PRURLs, a.URL)
+		}
+	}
+	return d, nil
 }

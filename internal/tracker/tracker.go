@@ -23,9 +23,17 @@ type User struct {
 	Email string
 }
 
+// IssueDetail adds what launching an agent needs.
+type IssueDetail struct {
+	Issue
+	Description string
+	PRURLs      []string // linked GitHub pull requests
+}
+
 // Tracker lists open issues for an assignee and the users that can be picked.
 type Tracker interface {
 	// Issues returns open (not completed/canceled/duplicate) issues; assignee may be "me".
 	Issues(ctx context.Context, assignee string) ([]Issue, error)
+	Issue(ctx context.Context, key string) (IssueDetail, error)
 	Users(ctx context.Context) ([]User, error)
 }
