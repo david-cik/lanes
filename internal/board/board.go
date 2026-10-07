@@ -29,7 +29,7 @@ type Row struct {
 	Agent *agent.Agent
 }
 
-// PoolLane is the lane, last in each team, of unassigned tickets ready to pick up.
+// PoolLane is the lane, first in each team, of unassigned tickets ready to pick up.
 const PoolLane = "Up for grabs"
 
 // stateRank orders a team's workflow states; Linear's MCP exposes no position.
@@ -74,7 +74,7 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 	slices.SortStableFunc(sorted, func(a, b tracker.Issue) int {
 		return cmp.Or(
 			cmp.Compare(a.Team, b.Team),
-			poolLast(a, b),
+			poolFirst(a, b),
 			cmp.Compare(listed(stateOrder[a.Team], a.State), listed(stateOrder[b.Team], b.State)),
 			cmp.Compare(rank(a.StateType), rank(b.StateType)),
 			cmp.Compare(a.State, b.State),
@@ -113,14 +113,14 @@ func lane(i tracker.Issue) string {
 	return i.State
 }
 
-func poolLast(a, b tracker.Issue) int {
+func poolFirst(a, b tracker.Issue) int {
 	switch {
 	case a.Pool == b.Pool:
 		return 0
 	case a.Pool:
-		return 1
+		return -1
 	}
-	return -1
+	return 1
 }
 
 // listed is a state's position in a configured order; unlisted states sort after.

@@ -56,7 +56,7 @@ Tickets assigned to you, grouped by team and workflow state; completed and cance
 are hidden. Under each ticket are the agents working on it. An agent belongs to a ticket
 when lanes started it for that ticket, when you put it there (`t`), or when its git branch,
 session name, or folder contains the ticket key. Everything else is under **Unlinked**.
-Last in each team is **Up for grabs**: the team's unassigned tickets in a not-started
+First in each team is **Up for grabs**: the team's unassigned tickets in a not-started
 (Todo-type) state, closed until you press `enter` on it. Starting an agent on one offers
 to claim it in Linear — assign it to you and move it to the team's first started state
 (the first started state in your `state_order`, else "In Progress") — on by default,

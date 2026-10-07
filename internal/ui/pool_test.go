@@ -61,6 +61,9 @@ func TestPoolLaneOpensAndClaimsOnStart(t *testing.T) {
 	if v := view(m); !rowHas(v, "▸ UP FOR GRABS", "1") || strings.Contains(v, "grab me") {
 		t.Fatalf("closed pool lane:\n%s", v)
 	}
+	if v := view(m); strings.Index(v, "UP FOR GRABS") > strings.Index(v, "ABC-1 fix it") {
+		t.Fatalf("pool lane isn't first in its team:\n%s", v)
+	}
 	m.cursorTo(t, "UP FOR GRABS")
 	m.Update(key("enter"))
 	if v := view(m); !strings.Contains(v, "▾ UP FOR GRABS") || !strings.Contains(v, "ABC-7 grab me") {
