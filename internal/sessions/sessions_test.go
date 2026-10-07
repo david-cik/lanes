@@ -68,13 +68,26 @@ func TestLookup(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
 	write(t, cfg, "abcd1111", `{"type":"ai-title","aiTitle":"one"}`+"\n", time.Hour)
 	write(t, cfg, "abcd2222", `{"type":"ai-title","aiTitle":"two"}`+"\n", 90*24*time.Hour)
-	if _, err := Lookup("abcd", state.Store{}); err == nil {
+	if _, err := Lookup("abcd", nil); err == nil {
 		t.Fatal("ambiguous prefix accepted")
 	}
-	if s, err := Lookup("abcd2", state.Store{}); err != nil || s.Title != "two" {
+	if s, err := Lookup("abcd2", nil); err != nil || s.Title != "two" {
 		t.Fatalf("%+v %v", s, err)
 	}
-	if _, err := Lookup("ab*", state.Store{}); err == nil {
+	if _, err := Lookup("ab*", nil); err == nil {
 		t.Fatal("glob accepted")
+	}
+}
+
+func TestRunningSessionWithoutTranscript(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	running := []agent.Agent{{ID: "f0rk1234-5678", Name: "ABC-1 fork", Cwd: "/src"}}
+	s, err := Lookup("f0rk", running)
+	if err != nil || s.ID != "f0rk1234-5678" || !s.Running || s.Title != "ABC-1 fork" {
+		t.Fatalf("lookup %+v %v", s, err)
+	}
+	all := List(running, 7, state.Store{Dir: t.TempDir()})
+	if len(all) != 1 || all[0].ID != "f0rk1234-5678" || !all[0].Running {
+		t.Fatalf("list %+v", all)
 	}
 }

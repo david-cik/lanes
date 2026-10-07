@@ -93,6 +93,18 @@ func List(running []agent.Agent, days int, store state.Store) []Session {
 			add(id, p)
 		}
 	}
+	for _, a := range running { // running but no transcript yet, e.g. a fork that hasn't taken a turn
+		if !seen[a.ID] {
+			seen[a.ID] = true
+			s := Session{ID: a.ID, Title: a.Name, Cwd: a.Cwd, When: a.Since, Running: true}
+			if t, ok := recTicket[a.ID]; ok {
+				s.Ticket = t
+			} else {
+				s.Ticket = links[state.LinkKey("claude", a.ID)]
+			}
+			out = append(out, s)
+		}
+	}
 	slices.SortFunc(out, func(a, b Session) int { return b.When.Compare(a.When) })
 	return out
 }
@@ -115,29 +127,33 @@ func Match(all []Session, query string) []Session {
 	return out
 }
 
-// Lookup finds one session's transcript by id or id prefix without scanning every
-// session (fast path for lanes link / unlink).
-func Lookup(ref string, store state.Store) (Session, error) {
+// Lookup finds one session by id or id prefix: its transcript, found without scanning
+// every session, or a running session that has none yet.
+func Lookup(ref string, running []agent.Agent) (Session, error) {
 	if len(ref) < 4 || strings.ContainsAny(ref, "/*?[") {
 		return Session{}, fmt.Errorf("session id %q is too short or not an id (use at least 4 characters)", ref)
 	}
 	paths, _ := filepath.Glob(filepath.Join(configDir(), "projects", "*", ref+"*.jsonl"))
-	ids := map[string]string{}
-	for _, p := range paths {
-		ids[strings.TrimSuffix(filepath.Base(p), ".jsonl")] = p
+	found := map[string]Session{}
+	for _, a := range running {
+		if strings.HasPrefix(a.ID, ref) {
+			found[a.ID] = Session{ID: a.ID, Title: a.Name, Cwd: a.Cwd, When: a.Since, Running: true}
+		}
 	}
-	switch len(ids) {
+	for _, p := range paths {
+		id := strings.TrimSuffix(filepath.Base(p), ".jsonl")
+		in, _ := suggest.SessionInfo(p)
+		found[id] = Session{ID: id, Title: in.Title, Cwd: in.Cwd, When: in.When, Running: found[id].Running}
+	}
+	switch len(found) {
 	case 0:
 		return Session{}, fmt.Errorf("no session matches %q (lanes sessions lists them)", ref)
 	case 1:
-	default:
-		return Session{}, fmt.Errorf("%q matches %d sessions; use more of the id", ref, len(ids))
+		for _, s := range found {
+			return s, nil
+		}
 	}
-	for id, p := range ids {
-		in, _ := suggest.SessionInfo(p)
-		return Session{ID: id, Title: in.Title, Cwd: in.Cwd, When: in.When}, nil
-	}
-	return Session{}, nil
+	return Session{}, fmt.Errorf("%q matches %d sessions; use more of the id", ref, len(found))
 }
 
 // Resolve finds one session by id or id prefix (at least 4 characters).

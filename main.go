@@ -270,7 +270,8 @@ func sessionsCommand(cmd string, args []string) error {
 		if fs.NArg() != want {
 			return fmt.Errorf("usage: lanes link <session-id> <TICKET> | lanes unlink <session-id>")
 		}
-		s, err := sessions.Lookup(fs.Arg(0), store)
+		running, _ := claude.New().List(ctx) // a running session may have no transcript yet
+		s, err := sessions.Lookup(fs.Arg(0), running)
 		if err != nil {
 			return err
 		}
