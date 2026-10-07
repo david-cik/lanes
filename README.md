@@ -73,6 +73,7 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
 | `l` | link / unlink a session to a ticket (saved) |
+| `L` | suggest links: read unlinked Claude sessions' transcripts and propose a ticket for each |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |
 | `u` | show another person's tickets |
@@ -113,6 +114,13 @@ Claude's own prompt stays on screen the whole time, so you can always answer the
 
 ## Sessions lanes didn't start
 
+`L` reads the transcripts Claude keeps for each unlinked session and proposes the open
+ticket it mentions most — counting what you typed above commands, and those above the
+agent's own text, and recent mentions above old ones. Clear matches come pre-checked;
+mixed ones show the alternatives. Nothing is linked until you press enter, and `l`
+changes or removes any link. With `auto_link = true`, new sessions with one clearly
+dominant ticket are linked automatically.
+
 By default, sessions you start yourself show up read-only with polled status. To give
 them live status, activity, and approvals too:
 
@@ -135,6 +143,7 @@ default_agent = "claude"
 branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_lower}
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
+auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
 
 # The first prompt an agent gets. Placeholders: {key} {key_lower} {slug} {title} {url}
 # {description} {preamble} {repo} {branch}

@@ -119,7 +119,10 @@ type Model struct {
 	gitCache     map[string]cachedGit // by directory
 	prCache      map[string]cachedPR  // by directory + "\x00" + branch
 	issueDetails map[string]cachedIssue
-	modal        *modal
+
+	review      *review         // suggested-links screen, when open
+	autoChecked map[string]bool // sessions auto_link has already scored
+	modal       *modal
 
 	now func() time.Time
 }
@@ -128,7 +131,7 @@ func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
 		stopping: map[string]bool{}, hooks: map[string]*hookState{},
 		readers: opt.Readers, gitCache: map[string]cachedGit{}, prCache: map[string]cachedPR{},
-		issueDetails: map[string]cachedIssue{}}
+		issueDetails: map[string]cachedIssue{}, autoChecked: map[string]bool{}}
 	if m.readers.Git == nil {
 		m.readers = defaultReaders()
 	}
@@ -235,7 +238,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.forgetStopped()
 			m.forgetHooks()
 			m.rebuild()
-			return m, m.detailsMoved()
+			return m, tea.Batch(m.detailsMoved(), m.autoLink())
 		}
 	case usersMsg:
 		if msg.err != nil {
@@ -273,7 +276,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotDetail(msg)
 	case adoptPlanMsg:
 		return m, m.confirmAdopt(msg.plan, msg.name)
+	case suggestMsg:
+		m.gotSuggestions(review(msg))
+	case autoLinkMsg:
+		m.gotAutoLink(msg)
 	case tea.KeyPressMsg:
+		if m.review != nil {
+			return m, m.reviewKey(msg)
+		}
 		if md := m.modal; md != nil {
 			if msg.String() == "ctrl+c" {
 				m.unshow()
@@ -341,6 +351,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.approve()
 	case "A":
 		return m.adoptSelected()
+	case "L":
+		return m.suggestLinks()
 	}
 	return nil
 }
@@ -395,6 +407,8 @@ func (m *Model) View() tea.View {
 
 	body := max(m.height-2, 1)
 	switch {
+	case m.review != nil:
+		m.viewReview(&b, body)
 	case m.modal != nil:
 		m.modal.view(&b, m.width, body)
 	case m.details:
@@ -420,12 +434,14 @@ func (m *Model) View() tea.View {
 		b.WriteString(errSty.Render(trunc("tracker: "+firstLine(m.issueErr.Error()), m.width)))
 	case m.agentErr != nil:
 		b.WriteString(errSty.Render(trunc("agents: "+firstLine(m.agentErr.Error()), m.width)))
+	case m.review != nil:
+		b.WriteString(faint.Render(trunc("j/k move · space toggle · tab other ticket · enter link checked · esc cancel", m.width)))
 	case m.modal != nil:
 		b.WriteString(faint.Render(trunc(m.modal.hint(), m.width)))
 	case m.opt.Tmux == nil:
 		b.WriteString(faint.Render(trunc("j/k move · d details · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)", m.width)))
 	default:
-		b.WriteString(faint.Render(trunc("enter show · d details · a approve · n new · A adopt · s send · x stop · l link · r refresh · u assignee · q quit", m.width)))
+		b.WriteString(faint.Render(trunc("enter show · d details · a approve · n new · A adopt · s send · x stop · l link · L suggest links · r refresh · u assignee · q quit", m.width)))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true
