@@ -177,6 +177,19 @@ type Plan struct {
 	ResumeFrom string // tool session to fork (adopt)
 }
 
+// FolderPlan starts a new agent for ticket d in dir as it is: no worktree or branch is
+// created. Repo and branch are whatever dir already is (if it's a git checkout at all).
+func FolderPlan(ctx context.Context, d tracker.IssueDetail, dir string, a agent.Adapter, cfg config.Config) Plan {
+	repo := dir
+	if top, err := git(ctx, dir, "rev-parse", "--show-toplevel"); err == nil {
+		repo = top
+	}
+	branch, _ := git(ctx, dir, "branch", "--show-current")
+	p := NewPlan(d, Repo{filepath.Base(repo), repo}, a, cfg)
+	p.Worktree, p.Branch, p.InPlace = dir, branch, true
+	return p
+}
+
 // AdoptPlan forks an existing session in its own directory, for ticket d.
 func AdoptPlan(ctx context.Context, d tracker.IssueDetail, dir, sessionID string, a agent.Adapter, cfg config.Config) Plan {
 	repo := dir

@@ -281,6 +281,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case detailMsg:
 		return m, m.gotDetail(msg)
+	case planMsg:
+		return m, m.confirmLaunch(msg.plan)
 	case adoptPlanMsg:
 		return m, m.confirmAdopt(msg.plan, msg.name)
 	case suggestMsg:

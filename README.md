@@ -87,7 +87,14 @@ bound `Ctrl-]` in tmux yourself, lanes leaves yours alone; pick another with `fo
 
 ### Starting an agent (`n`)
 
-lanes picks the repository from the ticket's linked pull requests or a repository named
+The start screen shows where the agent will run: `y`/`enter` starts it, `f` picks another
+folder (your launch folder, any repo as it is, or a path you type), and `w` switches to a
+fresh git worktree for the ticket.
+
+**Launch folder:** set `launch_dir` (e.g. `"~/git"`) to start new agents in one folder you
+choose, as it is — no worktree or branch is created.
+
+**Worktree per ticket** (the default without `launch_dir`): lanes picks the repository from the ticket's linked pull requests or a repository named
 in its description (otherwise it asks), fetches, and creates a worktree on a new branch
 from `origin`'s default branch — or reuses an existing branch or worktree. It never
 touches your local default branch. The agent starts with a prompt built from the ticket.
@@ -145,6 +152,7 @@ assignee      = "me"          # whose tickets: "me", a user id, name, or email
 linear_poll   = "60s"         # how often tickets refresh (min 1s)
 external_poll = "5s"          # how often agent sessions refresh (min 1s)
 repo_roots    = ["~/src", "~/git"]   # where to look for repositories
+launch_dir    = ""            # start new agents in this folder as it is (e.g. "~/git"); "" = a worktree per ticket
 default_agent = "claude"
 branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_lower}
 worktree_template = "{repo}/.worktrees/{branch}"

@@ -12,6 +12,7 @@ import (
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/board"
+	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/launch"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tracker"
@@ -254,12 +255,63 @@ func (m *Model) fetchDetail(issue tracker.Issue, a agent.Adapter) tea.Cmd {
 	}
 }
 
+type planMsg struct{ plan launch.Plan }
+
 func (m *Model) gotDetail(msg detailMsg) tea.Cmd {
 	if msg.err != nil {
 		m.say("", msg.err)
 		return nil
 	}
 	m.issueDetails[msg.detail.Key] = cachedIssue{detail: msg.detail}
+	if dir := m.opt.Config.LaunchDir; dir != "" {
+		return m.folderPlan(msg.detail, msg.adapter, dir)
+	}
+	return m.worktreePlan(msg.detail, msg.adapter)
+}
+
+// folderPlan prepares starting in dir as it is (git lookups off the UI loop).
+func (m *Model) folderPlan(d tracker.IssueDetail, a agent.Adapter, dir string) tea.Cmd {
+	cfg := m.opt.Config
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return planMsg{launch.FolderPlan(ctx, d, dir, a, cfg)}
+	}
+}
+
+// pickFolder lets the user start in another folder: the launch folder, a repo as it is,
+// or any path they type.
+func (m *Model) pickFolder(d tracker.IssueDetail, a agent.Adapter) tea.Cmd {
+	var items []choice
+	if dir := m.opt.Config.LaunchDir; dir != "" {
+		items = append(items, choice{"launch folder  " + faint.Render(home(dir)), dir})
+	}
+	for _, r := range launch.Repos(m.opt.Config.RepoRoots) {
+		items = append(items, choice{r.Name + "  " + faint.Render(home(r.Path)), r.Path})
+	}
+	items = append(items, choice{"Type a path…", ""})
+	m.modal = &modal{title: "Start " + d.Key + " in which folder?", items: items,
+		onChoose: func(c choice) tea.Cmd {
+			if c.value != "" {
+				return m.folderPlan(d, a, c.value)
+			}
+			m.modal = &modal{input: true, title: "Folder for " + d.Key,
+				onInput: func(text string) tea.Cmd {
+					dir := config.Expand(strings.TrimSpace(text))
+					if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+						m.say("", fmt.Errorf("%s is not a folder", text))
+						return nil
+					}
+					return m.folderPlan(d, a, dir)
+				}}
+			return nil
+		}}
+	return nil
+}
+
+// worktreePlan prepares a new worktree and branch for the ticket in its repo.
+func (m *Model) worktreePlan(d tracker.IssueDetail, a agent.Adapter) tea.Cmd {
+	msg := detailMsg{detail: d, adapter: a}
 	repos := launch.Repos(m.opt.Config.RepoRoots)
 	if r, ok := launch.InferRepo(msg.detail, repos); ok {
 		return m.confirmLaunch(launch.NewPlan(msg.detail, r, msg.adapter, m.opt.Config))
@@ -285,16 +337,28 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	if _, ok := p.Adapter.(agent.Hooker); ok {
 		p.HookBin, p.Socket = m.opt.HookBin, m.opt.Socket
 	}
-	warning, err := launch.Check(m.live, p.Worktree, p.Ticket.Key)
-	if err != nil {
-		m.say("", err)
-		return nil
+	var warning string
+	if !p.InPlace || p.Branch != "" { // the lock protects git checkouts only
+		w, err := launch.Check(m.live, p.Worktree, p.Ticket.Key)
+		if err != nil {
+			m.say("", err)
+			return nil
+		}
+		warning = w
 	}
-	lines := []string{
-		"tool:     " + p.Adapter.Name(),
-		"repo:     " + home(p.Repo.Path),
-		"branch:   " + p.Branch,
-		"worktree: " + home(p.Worktree),
+	var lines []string
+	if p.InPlace {
+		lines = []string{"tool:     " + p.Adapter.Name(), "folder:   " + home(p.Worktree)}
+		if p.Branch != "" {
+			lines = append(lines, "branch:   "+p.Branch+" (as it is)")
+		}
+	} else {
+		lines = []string{
+			"tool:     " + p.Adapter.Name(),
+			"repo:     " + home(p.Repo.Path),
+			"branch:   " + p.Branch + " (new)",
+			"worktree: " + home(p.Worktree),
+		}
 	}
 	if warning != "" {
 		lines = append(lines, "", waitS.Render("⚠ "+warning))
@@ -307,16 +371,29 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	}
 	m.notice = ""
 	tm, store := m.opt.Tmux, m.opt.Store
-	m.modal = &modal{confirm: true, title: "Start an agent on " + p.Ticket.Key + "?", lines: lines,
-		onYes: func() tea.Cmd {
-			m.say("starting "+p.Adapter.Name()+" on "+p.Ticket.Key+"…", nil)
-			return func() tea.Msg {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-				rec, err := launch.Run(ctx, p, tm, store)
-				return launchedMsg{rec: rec, err: err}
-			}
-		}}
+	start := func() (tea.Cmd, bool) {
+		m.say("starting "+p.Adapter.Name()+" on "+p.Ticket.Key+"…", nil)
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			rec, err := launch.Run(ctx, p, tm, store)
+			return launchedMsg{rec: rec, err: err}
+		}, false
+	}
+	acts := []action{
+		{"y", "start", start},
+		{"enter", "start", start},
+		{"f", "start in another folder", func() (tea.Cmd, bool) { return m.pickFolder(p.Ticket, p.Adapter), true }},
+	}
+	md := &modal{title: "Start an agent on " + p.Ticket.Key + "?", lines: lines}
+	if p.InPlace {
+		acts = append(acts, action{"w", "use a new git worktree for this ticket instead", func() (tea.Cmd, bool) {
+			cmd := m.worktreePlan(p.Ticket, p.Adapter)
+			return cmd, m.modal != md // close this screen if no repo picker or new plan replaced it
+		}})
+	}
+	md.actions = acts
+	m.modal = md
 	return nil
 }
 

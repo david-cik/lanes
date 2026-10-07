@@ -31,6 +31,7 @@ type Config struct {
 	Assignee     string   `toml:"assignee"`
 
 	RepoRoots        []string `toml:"repo_roots"`
+	LaunchDir        string   `toml:"launch_dir"` // start new agents in this folder (no worktree); "" = a worktree per ticket
 	DefaultAgent     string   `toml:"default_agent"`
 	BranchTemplate   string   `toml:"branch_template"`
 	WorktreeTemplate string   `toml:"worktree_template"`
@@ -111,6 +112,7 @@ func Load(path string) (Config, error) {
 	for i, r := range c.RepoRoots {
 		c.RepoRoots[i] = Expand(r)
 	}
+	c.LaunchDir = Expand(c.LaunchDir)
 	return c, nil
 }
 

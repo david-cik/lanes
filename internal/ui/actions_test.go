@@ -199,7 +199,7 @@ func TestLaunchFlow(t *testing.T) {
 	m.cursorTo(t, "ABC-1 fix it")
 	_, cmd := m.Update(key("n"))
 	_, cmd = m.Update(cmd()) // detailMsg → repo inferred from description → confirm modal
-	if m.modal == nil || !m.modal.confirm || !strings.Contains(strings.Join(m.modal.lines, "\n"), "abc-1/fix-it") {
+	if m.modal == nil || m.modal.actions == nil || !strings.Contains(strings.Join(m.modal.lines, "\n"), "abc-1/fix-it") {
 		t.Fatalf("modal %+v", m.modal)
 	}
 	if !strings.Contains(strings.Join(m.modal.lines, "\n"), "already has a running") {
@@ -307,5 +307,59 @@ func TestAdoptInNonRepoFolderHasNoLock(t *testing.T) {
 	m.Update(cmd())
 	if m.modal == nil || !m.modal.confirm {
 		t.Fatalf("a folder that isn't a checkout should not be locked; notice %q", m.notice)
+	}
+}
+
+func TestLaunchDirStartsInFolderAndCanSwitch(t *testing.T) {
+	m, ft := controlModel(t)
+	launchDir := t.TempDir()
+	m.opt.Config.LaunchDir = launchDir
+	m.opt.Tracker = detailTracker{&fakeTracker{}}
+	m.cursorTo(t, "ABC-1 fix it")
+	_, cmd := m.Update(key("n"))
+	_, cmd = m.Update(cmd()) // detailMsg → folder plan (off the loop)
+	m.Update(cmd())          // planMsg → confirm
+	lines := strings.Join(m.modal.lines, "\n")
+	if !strings.Contains(lines, "folder:   "+home(launchDir)) || strings.Contains(lines, "worktree") {
+		t.Fatalf("confirm lines:\n%s", lines)
+	}
+	// f → pick another folder → type a path
+	other := t.TempDir()
+	m.Update(key("f"))
+	if m.modal == nil || m.modal.items[len(m.modal.items)-1].label != "Type a path…" {
+		t.Fatalf("picker %+v", m.modal)
+	}
+	m.modal.pick = len(m.modal.visible()) - 1
+	m.Update(key("enter"))
+	m.modal.text = other
+	_, cmd = m.Update(key("enter"))
+	m.Update(cmd())
+	if !strings.Contains(strings.Join(m.modal.lines, "\n"), "folder:   "+home(other)) {
+		t.Fatalf("after picking a folder: %v", m.modal.lines)
+	}
+	_, cmd = m.Update(key("y"))
+	m.Update(cmd())
+	if !strings.Contains(strings.Join(ft.log, "|"), "new lanes-") || m.live[len(m.live)-1].Worktree != other {
+		t.Fatalf("log %v live %+v", ft.log, m.live)
+	}
+	if _, err := os.Stat(filepath.Join(other, ".worktrees")); err == nil {
+		t.Fatal("folder launch created a worktree")
+	}
+}
+
+func TestFolderLaunchOfferWorktreeInstead(t *testing.T) {
+	m, _ := controlModel(t)
+	m.opt.Config.LaunchDir = t.TempDir()
+	m.opt.Tracker = detailTracker{&fakeTracker{}}
+	m.cursorTo(t, "ABC-1 fix it")
+	_, cmd := m.Update(key("n"))
+	_, cmd = m.Update(cmd())
+	m.Update(cmd())
+	m.Update(key("w")) // no repos under repo_roots in this test → explains
+	if m.modal != nil && strings.HasPrefix(m.modal.title, "Start an agent") {
+		t.Fatal("w did nothing")
+	}
+	if m.modal == nil && !strings.Contains(m.notice, "no git repos found") {
+		t.Fatalf("notice %q", m.notice)
 	}
 }

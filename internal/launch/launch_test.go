@@ -224,3 +224,18 @@ func TestAdoptRunsInPlace(t *testing.T) {
 		t.Fatal("adopt created a worktree")
 	}
 }
+
+func TestFolderPlanUsesTheFolderAsIs(t *testing.T) {
+	dir := t.TempDir() // not a repo
+	cfg := config.Default()
+	cfg.PromptTemplate = "{key} in {repo}"
+	p := FolderPlan(context.Background(), tracker.IssueDetail{Issue: tracker.Issue{Key: "ABC-3", Title: "t"}}, dir, fake{}, cfg)
+	if !p.InPlace || p.Worktree != dir || p.Branch != "" || p.Repo.Path != dir || p.Prompt != "ABC-3 in "+dir {
+		t.Fatalf("plan %+v", p)
+	}
+	repo := clone(t, t.TempDir(), "app", "")
+	p = FolderPlan(context.Background(), tracker.IssueDetail{Issue: tracker.Issue{Key: "ABC-3"}}, repo, fake{}, cfg)
+	if p.Branch != "main" || p.Repo.Name != "app" {
+		t.Fatalf("plan in a checkout %+v", p)
+	}
+}
