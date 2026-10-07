@@ -167,6 +167,12 @@ func (c Client) UnsetSessionOpt(pane, key string) error {
 	return err
 }
 
+// GlobalOpt returns a global (server-wide) option's value, e.g. "prefix".
+func (c Client) GlobalOpt(key string) string {
+	v, _ := c.run("show-options", "-gv", key)
+	return v
+}
+
 // RootBinding returns the root-table (no prefix) binding line for key, or "".
 // (list-keys with a key argument doesn't match punctuation keys like C-], so scan.)
 func (c Client) RootBinding(key string) string {

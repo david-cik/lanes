@@ -401,7 +401,7 @@ func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
 
 func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 	m, _ := controlModel(t)
-	m.opt.FocusLabel = "Ctrl-]"
+	m.opt.FocusLabel = "Ctrl-b ←/→"
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	m.cursorTo(t, "one")
 	if f := m.footer(); !strings.Contains(f, "x stop") || !strings.Contains(f, "? keys") || len([]rune(f)) > 80 {
@@ -412,7 +412,7 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 		t.Fatalf("ticket footer %q", f)
 	}
 	m.Update(key("?"))
-	if v := view(m); !strings.Contains(v, "remove it from its ticket") || !strings.Contains(v, "Ctrl-] or click") {
+	if v := view(m); !strings.Contains(v, "remove it from its ticket") || !strings.Contains(v, "Ctrl-b ←/→ or click") || !strings.Contains(v, "Ctrl-b twice") {
 		t.Fatalf("help:\n%s", v)
 	}
 	m.Update(key("?"))

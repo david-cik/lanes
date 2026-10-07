@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/state"
@@ -65,7 +66,7 @@ func (f Fleet) Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, err
 	var out []agent.Agent
 	for _, r := range recs {
 		a := agent.Agent{
-			ID: r.SessionID, Tool: r.Tool, Name: r.Branch, Cwd: r.Worktree, Status: agent.Unknown,
+			ID: r.SessionID, Tool: r.Tool, Name: recordName(r), Cwd: r.Worktree, Status: agent.Unknown,
 			Since: r.CreatedAt, TicketKey: r.TicketKey, RecordID: r.ID, Pane: r.Pane,
 		}
 		if r.SessionID != "" {
@@ -85,6 +86,21 @@ func (f Fleet) Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, err
 	}
 	agent.FillBranches(ctx, out)
 	return out, recs, errors.Join(errs...)
+}
+
+// recordName names a launched agent the tool doesn't list (yet): the name given at
+// launch, else its branch, else its ticket, else its folder.
+func recordName(r state.Record) string {
+	ticket := r.TicketKey
+	if ticket == state.NoTicket {
+		ticket = ""
+	}
+	for _, n := range []string{r.Name, r.Branch, ticket, filepath.Base(r.Worktree)} {
+		if n != "" && n != "." && n != "/" {
+			return n
+		}
+	}
+	return r.ID
 }
 
 // ReconcileTmux is the part of tmux.Client crash recovery needs.

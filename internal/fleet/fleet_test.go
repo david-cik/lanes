@@ -83,3 +83,20 @@ func TestNoPruneNeverTouchesTmux(t *testing.T) {
 		t.Fatalf("live=%+v err=%v", live, err)
 	}
 }
+
+func TestUnlistedLaunchedAgentIsNamed(t *testing.T) {
+	store := state.Store{Dir: t.TempDir()}
+	store.Save(state.Record{ID: "r1", Tool: "claude", Name: "ABC-1 fix-it", SessionID: "gone", Pane: "%1", Worktree: "/w/git"})
+	store.Save(state.Record{ID: "r2", Tool: "claude", TicketKey: "ABC-2", SessionID: "gone2", Pane: "%2", Worktree: "/w/git"}) // older record: no name
+	got, _, err := Fleet{Store: store, Tmux: panes{ps: []tmux.Pane{{ID: "%1", Agent: "r1"}, {ID: "%2", Agent: "r2"}}}}.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, a := range got {
+		names[a.RecordID] = a.Name
+	}
+	if names["r1"] != "ABC-1 fix-it" || names["r2"] != "ABC-2" {
+		t.Fatalf("names %v", names)
+	}
+}

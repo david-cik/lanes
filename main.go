@@ -246,7 +246,14 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restor
 	}
 	setOpt("mouse", "on")
 	if key == "" || key == "none" {
-		return "", "", restore
+		// No extra binding: move with the tmux prefix and arrows (or click). Drop a
+		// focus binding an older lanes or a crashed panel may have left behind.
+		if b := tm.RootBinding("C-]"); strings.Contains(b, "#{==:#{session_name},") {
+			tm.Unbind("C-]")
+		}
+		label = keyLabel(tm.GlobalOpt("prefix")) + " ←/→"
+		setOpt("status-right", fmt.Sprintf(" %s or click: board ⇄ agent ", label))
+		return label, "", restore
 	}
 	session, err := tm.SessionOf(panel)
 	if err != nil {
@@ -262,7 +269,7 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restor
 	}
 	undo = append(undo, func() { tm.Unbind(key) })
 	setOpt("status-right", fmt.Sprintf(" %s or click: board ⇄ agent ", label))
-	return label, "", restore
+	return label + " ⇄", "", restore
 }
 
 // keyLabel turns a tmux key name into what people call it: C-] → Ctrl-], M-Left → Alt-Left.

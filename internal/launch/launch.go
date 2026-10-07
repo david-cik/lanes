@@ -214,8 +214,9 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 		ID: state.NewID(), Tool: p.Adapter.Name(), TicketKey: p.Ticket.Key, Repo: p.Repo.Path,
 		Worktree: p.Worktree, Branch: p.Branch, CreatedAt: time.Now().UTC(),
 	}
+	rec.Name = strings.TrimSpace(p.Ticket.Key + " " + Slug(p.Ticket.Title))
 	cmd := p.Adapter.Command(agent.LaunchSpec{
-		Name: p.Ticket.Key + " " + Slug(p.Ticket.Title), Prompt: p.Prompt, Args: p.Args, HookBin: p.HookBin,
+		Name: rec.Name, Prompt: p.Prompt, Args: p.Args, HookBin: p.HookBin,
 		ResumeFrom: p.ResumeFrom,
 	})
 	rec.SessionID = cmd.SessionID

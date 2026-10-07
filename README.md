@@ -81,10 +81,14 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `?` | list every key (the footer shows only the keys for the selected row) |
 | `q` | quit (agents keep running in their own tmux sessions) |
 
-**`Ctrl-]` jumps between the board and the agent pane** (or click either one — lanes turns
-the mouse on for its tmux session). The key only works inside the lanes session; anywhere
-else it reaches your program as usual, and lanes removes it when it quits. If you've
-bound `Ctrl-]` in tmux yourself, lanes leaves yours alone; pick another with `focus_key`.
+**Move between the board and the agent pane with your tmux prefix and an arrow**
+(`Ctrl-b ←` / `Ctrl-b →` by default), **or click either one** — lanes turns the mouse on
+for its tmux session while it runs. Inside an agent, don't press `Ctrl-b` twice: that
+sends `Ctrl-b` to Claude, which moves the session to the background.
+
+Prefer one key? Set `focus_key` (a tmux key name such as `"C-]"` or `"F12"`): it jumps
+between board and agent inside the lanes session only, passes through everywhere else,
+and is removed when lanes quits. A binding you already have for that key is left alone.
 
 ### Starting an agent (`n`)
 
@@ -159,7 +163,7 @@ branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
 auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
-focus_key = "C-]"             # tmux key name that jumps board ⇄ agent ("none" to turn off), e.g. "F12", "M-Left"
+focus_key = ""                # optional single key that jumps board ⇄ agent, e.g. "C-]", "F12" ("" = tmux prefix + arrows)
 
 # The first prompt an agent gets. Placeholders: {key} {key_lower} {slug} {title} {url}
 # {description} {preamble} {repo} {branch}

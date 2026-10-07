@@ -27,7 +27,7 @@ func (m *Model) footer() string {
 		keys = append(keys, "A adopt", "l ticket", "d details")
 	}
 	if m.opt.FocusLabel != "" {
-		keys = append(keys, m.opt.FocusLabel+" ⇄")
+		keys = append(keys, m.opt.FocusLabel)
 	}
 	keys = append(keys, "? keys") // q quit and the rest are in ?
 	out := ""
@@ -55,7 +55,7 @@ var helpLines = []string{
 	"  u          show someone else's tickets  ·  r  refresh  ·  q  quit",
 	"",
 	"Panes",
-	"  Ctrl-] or click   jump between the board and the agent",
+	"  {focus} or click   jump between the board and the agent",
 	"",
 	"Approving (a)",
 	"  y once · s this session · A always (this repo) · e edit rule · tab other rule",
@@ -63,15 +63,21 @@ var helpLines = []string{
 }
 
 func (m *Model) showHelp() {
-	lines := append([]string{}, helpLines...)
-	for i, l := range lines {
-		if strings.HasPrefix(l, "  Ctrl-] or click") {
+	var lines []string
+	for _, l := range helpLines {
+		if strings.Contains(l, "{focus}") {
 			if m.opt.FocusLabel == "" {
-				lines[i] = "  click      jump between the board and the agent"
+				l = "  click      jump between the board and the agent"
 			} else {
-				lines[i] = strings.Replace(l, "Ctrl-]", m.opt.FocusLabel, 1)
+				l = strings.Replace(l, "{focus}", strings.TrimSuffix(m.opt.FocusLabel, " ⇄"), 1)
 			}
+			lines = append(lines, l)
+			if strings.HasPrefix(m.opt.FocusLabel, "Ctrl-b") {
+				lines = append(lines, "  (in an agent, Ctrl-b twice sends Ctrl-b to Claude, which moves the session to the background)")
+			}
+			continue
 		}
+		lines = append(lines, l)
 	}
 	closeHelp := func() (tea.Cmd, bool) { return nil, false }
 	m.modal = &modal{title: "Keys", lines: lines, actions: []action{

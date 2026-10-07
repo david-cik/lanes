@@ -19,6 +19,7 @@ import (
 type Record struct {
 	ID        string    `json:"id"`
 	Tool      string    `json:"tool"`
+	Name      string    `json:"name,omitempty"` // display name given at launch
 	TicketKey string    `json:"ticket"`
 	Repo      string    `json:"repo"`
 	Worktree  string    `json:"worktree"`
