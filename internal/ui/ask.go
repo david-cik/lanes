@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,12 +26,22 @@ Claude sessions (title, folder, first prompt, recent prompts, ticket keys the se
 mentions, and its current ticket). Pick the one session and the one ticket the request
 means. Reply with only a JSON object, no prose:
 {"session":"<session id>","ticket":"<TICKET KEY, or - to take the session off its ticket>","reason":"<one short sentence>"}
-If the request is ambiguous or nothing fits, reply {"question":"<what you need to know>"}.`
+If the request is ambiguous or nothing fits, reply {"question":"<what you need to know>"}.
+"conversation" holds the questions you already asked and their answers; use them, and
+don't ask the same thing again.`
 
 type askMsg struct {
 	session, ticket, reason, question string
 	err                               error
 	known                             map[string]string // session ids Claude was shown → title
+	request                           string            // what was asked, to carry on after a question
+	convo                             []askTurn
+}
+
+// askTurn is one follow-up: what Claude asked and what you answered.
+type askTurn struct {
+	Asked    string `json:"claude_asked"`
+	Answered string `json:"you_answered"`
 }
 
 // ask is "/": describe the session and the ticket in your own words; Claude proposes
@@ -42,12 +53,12 @@ func (m *Model) ask() tea.Cmd {
 				return nil
 			}
 			m.say("asking Claude…", nil)
-			return m.askClaude(text)
+			return m.askClaude(text, nil)
 		}}
 	return nil
 }
 
-func (m *Model) askClaude(request string) tea.Cmd {
+func (m *Model) askClaude(request string, convo []askTurn) tea.Cmd {
 	var running []agent.Agent
 	for _, a := range m.agents {
 		if !a.Ended {
@@ -65,7 +76,7 @@ func (m *Model) askClaude(request string) tea.Cmd {
 		if len(list) > 40 {
 			list = list[:40]
 		}
-		data, _ := json.Marshal(map[string]any{"request": request, "open_tickets": tickets, "sessions": list})
+		data, _ := json.Marshal(map[string]any{"request": request, "conversation": convo, "open_tickets": tickets, "sessions": list})
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		out, err := run(ctx, askSystem, string(data))
@@ -73,6 +84,7 @@ func (m *Model) askClaude(request string) tea.Cmd {
 			return askMsg{err: err}
 		}
 		r := parseAsk(out)
+		r.request, r.convo = request, convo
 		r.known = map[string]string{}
 		for _, s := range list {
 			r.known[s.ID] = s.Title
@@ -99,7 +111,20 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 		m.say("", msg.err)
 		return nil
 	case msg.question != "":
-		m.say("Claude asks: "+msg.question, nil)
+		m.notice = ""
+		lines := []string{faint.Render("you: " + msg.request)}
+		for _, t := range msg.convo {
+			lines = append(lines, faint.Render("Claude: "+t.Asked), faint.Render("you: "+t.Answered))
+		}
+		m.modal = &modal{input: true, title: "Claude asks: " + msg.question, lines: append(lines, ""),
+			hint: "enter answer · esc stop",
+			onInput: func(answer string) tea.Cmd {
+				if strings.TrimSpace(answer) == "" {
+					return nil
+				}
+				m.say("asking Claude…", nil)
+				return m.askClaude(msg.request, append(slices.Clone(msg.convo), askTurn{msg.question, answer}))
+			}}
 		return nil
 	case msg.session == "" || msg.ticket == "":
 		m.say("", fmt.Errorf("Claude didn't name a session and a ticket"))

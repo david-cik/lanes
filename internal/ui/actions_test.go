@@ -486,10 +486,37 @@ func TestAskProposesThenLinksOnConfirm(t *testing.T) {
 }
 
 func TestAskQuestionAndGarbage(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	endedTranscript(t, cfg, "x9", "/src", "outside work")
 	m, _ := controlModel(t)
-	m.Update(askMsg{question: "which of the two CSP sessions?"})
-	if !strings.Contains(m.notice, "Claude asks: which of the two") || m.modal != nil {
-		t.Fatalf("notice %q", m.notice)
+	var prompts []string
+	m.readers.Ask = func(_ context.Context, system, prompt string) (string, error) {
+		prompts = append(prompts, prompt)
+		if len(prompts) == 1 {
+			return `{"question":"which of the two CSP sessions?"}`, nil
+		}
+		return `{"session":"x9","ticket":"ABC-1","reason":"the rollout one"}`, nil
+	}
+	_, cmd := m.Update(key(":"))
+	for _, r := range "attach my CSP session" {
+		m.Update(key(string(r)))
+	}
+	_, cmd = m.Update(key("enter"))
+	m.Update(cmd()) // Claude asks back
+	if m.modal == nil || !m.modal.input || m.modal.title != "Claude asks: which of the two CSP sessions?" {
+		t.Fatalf("no answer prompt: %+v", m.modal)
+	}
+	for _, r := range "the rollout one" {
+		m.Update(key(string(r)))
+	}
+	_, cmd = m.Update(key("enter"))
+	m.Update(cmd())
+	if len(prompts) != 2 || !strings.Contains(prompts[1], `"you_answered":"the rollout one"`) || !strings.Contains(prompts[1], "attach my CSP session") {
+		t.Fatalf("follow-up prompt %v", prompts)
+	}
+	if m.modal == nil || m.modal.title != "Link outside to ABC-1?" {
+		t.Fatalf("after answering: %+v", m.modal)
 	}
 	if r := parseAsk("no json here"); r.err == nil {
 		t.Fatal("garbage accepted")
