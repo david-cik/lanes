@@ -42,7 +42,8 @@ func (m *Model) footer() string {
 
 var helpLines = []string{
 	"Board",
-	"  j k g G    move",
+	"  ↑ ↓ (or j k)        move",
+	"  Home End (or g G)   top / bottom",
 	"  enter      agent: show it · ticket: show/resume/start its agent · ended: resume",
 	"  n          start an agent on the ticket (y start · f other folder · w worktree)",
 	"  A          adopt a session lanes didn't start (or resume an ended one)",

@@ -65,7 +65,8 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 
 | Key | Does |
 |---|---|
-| `j` `k` `g` `G` | move |
+| `↑` `↓` (or `j` `k`) | move |
+| `Home` `End` (or `g` `G`) | top / bottom |
 | `enter` | on an agent: show it in the right pane · on a ticket: show its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it |
 | `n` | start an agent on the selected ticket |
 | `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running); on an ended session, resume it |
