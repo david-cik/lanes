@@ -3,28 +3,32 @@
 A terminal control panel for local AI coding agents, organized by the tickets they work on.
 
 lanes shows the issues assigned to you (Linear today) and the agent sessions working each
-one. From the board you can start an agent on a ticket in its own git worktree, watch it
-live, send it a message, approve its permission prompts, check its branch and pull
-request, and stop it.
+one, inside tmux, with the selected agent live beside the board. From the board you can
+start an agent on a ticket — yours, or an unassigned one from your team — in a folder or
+its own git worktree, watch it, send it a message, approve its permission prompts, check
+its branch and pull request, and stop it. Sessions you started elsewhere show up too:
+put them on tickets yourself, let lanes suggest tickets from their transcripts, or ask
+Claude in plain words ("find my old sessions for this ticket").
 
 ```
-⚠ 1 waiting (a) · lanes · me · 12 tickets · 4 agents · updated 14:02:11
-Alpha                                       │ claude ▸ abc-12/fix-login
-  ── In Progress ──                         │ (the selected agent, live)
-    ABC-12 Fix login redirect               │
-      ● claude ABC-12 fix-login working 4m ◀│
-      ⚠ claude ABC-12 review waiting · Bash:│
-  ── In Review ──                           │
-    ABC-9 Rate limit the export endpoint    │
-Unlinked                                    │
-  ○ claude scratch idle 1h · ~/src (ro)     │
-enter go to · d details · a approve · n new …│
+ ● board ───────────────────────────────────┬─ ○ agent · ✳ ABC-12 fix-login ──
+▐lanes▌  me · 12 tickets  ⠹ 1  ⚠ 1 waiting  │
+ Alpha  12                                  │
+ ┏ ▸ UP FOR GRABS ───────────────────── 4   │  (the selected agent, live)
+ ┏ IN PROGRESS ──────────────────────── 3   │
+ ┃  ABC-12 Fix login redirect  ⚠            │
+ ┃   ├─ ⠹ fix-login     working    4m  ◀    │
+ ┃   └─ ⚠ review        needs you  · Bash…  │
+ ┗  ABC-9 Rate limit the export endpoint    │
+ ╭ UNLINKED ─────────────────────────── 1   │
+ ╰   ○ scratch          idle       1h  ~/src│
+⟨enter⟩ go to  ⟨s⟩ send  ⟨x⟩ stop  ⟨t⟩ ticket  ⟨?⟩ keys
 ```
 
 ## Requirements
 
 - macOS or Linux
-- [tmux](https://github.com/tmux/tmux) (lanes runs inside it)
+- [tmux](https://github.com/tmux/tmux) 3.3 or newer (lanes runs inside it)
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) for agents
 - [GitHub CLI](https://cli.github.com) (`gh`, signed in) for pull request details — optional
 - Go (latest) to install
@@ -32,7 +36,7 @@ enter go to · d details · a approve · n new …│
 ## Install
 
 ```sh
-go install github.com/david-cik/lanes@latest
+go install github.com/david-cik/lanes@latest     # or a release, e.g. @v0.1.0
 ```
 
 Use the installed binary rather than `go run`: launched agents call back into lanes
@@ -52,20 +56,23 @@ personal API key instead, set `LINEAR_API_KEY`. `lanes auth logout` forgets the 
 
 ## The board
 
-Tickets assigned to you, grouped by team and workflow state; completed and canceled ones
-are hidden. Under each ticket are the agents working on it. An agent belongs to a ticket
+Tickets assigned to you, grouped by team, each workflow state a lane down the left edge
+(`┏ ┃ ┗`; order them with `state_order`); completed and canceled ones are hidden. Under each ticket are the agents working on it. An agent belongs to a ticket
 when lanes started it for that ticket, when you put it there (`t`), or when its git branch,
-session name, or folder contains the ticket key. Everything else is under **Unlinked**.
+session name, or folder contains the ticket key. Everything else is under **Unlinked**
+(the dashed lane).
 First in each team is **Up for grabs**: the team's unassigned tickets in a not-started
 (Todo-type) state, closed until you press `enter` on it. Starting an agent on one offers
 to claim it in Linear — assign it to you and move it to the team's first started state
 (the first started state in your `state_order`, else "In Progress") — on by default,
 `c` on the start screen leaves it as it is.
 
-`(ro)` marks sessions lanes didn't start: you can see and link them, and adopt them (`A`),
-but not control them.
+`external` marks sessions lanes didn't start: you can see them, put them on tickets, and
+adopt them (`A`), but not control them. Once you adopt one, its original (which keeps
+running) is no longer shown.
 
-Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
+Status: a spinner while working, `○` idle, `⚠` waiting for you ("needs you"), `·` ended,
+`◌` unknown. `◀` marks the agent shown on the right.
 
 ## Keys
 
@@ -78,31 +85,34 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `enter` | on an agent: go to it · on a ticket: go to its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it |
 | `l` `→` | go to the agent pane |
 | `n` | start an agent on the selected ticket |
-| `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running); on an ended session, resume it |
+| `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running, off the board); on an ended session, resume it |
 | `a` | answer the selected (or oldest) waiting permission request |
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
 | `t` | move a session to another ticket, or take it off its ticket (saved; matching by branch, `T` and `auto_link` won't put it back; an ended session that's taken off disappears from the board) |
 | `T` | suggest tickets: read unlinked Claude sessions' transcripts and propose a ticket for each |
-| `:` | ask Claude in plain words, e.g. "attach my CSP session to ABC-12" — it proposes the link, you confirm; if it asks back, you answer and it carries on |
+| `:` | ask Claude in plain words — "attach my CSP session to ABC-12", or on a ticket "find my old sessions for this ticket". It knows the ticket you're on, proposes one or more links (you confirm), asks back if unsure (you answer), or just answers |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |
 | `u` | show another person's tickets |
 | `r` | refresh |
 | `?` | list every key (the footer shows only the keys for the selected row) |
+| `c` | on the start screen of an up-for-grabs ticket: claim it in Linear, or not |
 | `q` | quit (agents keep running in their own tmux sessions) |
 
 **Mouse:** click a row to select it (the agent shows on the right), click it again to go
 to it, scroll to move, click a key in the footer to press it, click a choice in a menu.
 
 **Move between the board and the agent pane with your tmux prefix and `h` / `l`**, as in
-herdr (`Ctrl-b h` / `Ctrl-b l` by default; the arrows work too), **or click either one** —
-lanes turns the mouse on for its tmux session while it runs, and puts a thin title over
-each pane: `●` marks the one you're in (`● board` / `○ agent · <its title>`). `prefix z` zooms the agent
-pane. The `h` / `l` bindings act only in the lanes session (elsewhere they keep tmux's
-defaults), are removed when lanes quits, and aren't added if you've bound those keys
-yourself. Inside an agent, don't press `Ctrl-b` twice: that sends `Ctrl-b` to Claude,
-which moves the session to the background.
+herdr (`Ctrl-b h` / `Ctrl-b l` by default; the arrows work too), with the prefix pressed
+twice (`Ctrl-b Ctrl-b`), **or by clicking either one**. A thin title over each pane marks
+the one you're in: `● board` / `○ agent · <its title>`. `prefix z` zooms the agent pane.
+
+While it runs, lanes turns the mouse on for its tmux session and borrows those keys
+there only: elsewhere they keep tmux's defaults (the prefix pressed twice still sends the
+prefix), keys you've bound yourself are left alone, and everything is put back when lanes
+quits. Inside lanes the prefix pressed twice never reaches the agent — for Claude, `Ctrl-b`
+would move the session to the background and leave a copy of it on the board.
 
 Prefer one key? Set `focus_key` (a tmux key name such as `"C-]"` or `"F12"`): it jumps
 between board and agent inside the lanes session only, passes through everywhere else,
@@ -168,9 +178,9 @@ lanes uninstall-hooks    # removes exactly what install-hooks added
 ### From any Claude session
 
 ```sh
-lanes sessions [words…]          # running and recent sessions: title, folder, first prompt, ticket, mentions
-lanes link <session-id> <TICKET> # attach (id prefix is enough)
-lanes unlink <session-id>        # take off its ticket
+lanes sessions [--days N] [words…] # running and recent (7 days) sessions: title, folder, prompts, ticket, mentions
+lanes link <session-id> <TICKET>   # put it on a ticket (id prefix is enough)
+lanes unlink <session-id>          # take it off its ticket
 ```
 
 Copy `skills/lanes` into `~/.claude/skills/` and you can just tell Claude "attach my
@@ -192,7 +202,7 @@ branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
 auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
-focus_key = ""                # optional single key that jumps board ⇄ agent, e.g. "C-]", "F12" ("" = tmux prefix + arrows)
+focus_key = ""                # optional single key that jumps board ⇄ agent, e.g. "C-]", "F12" ("" = prefix + h/l)
 
 # The first prompt an agent gets. Placeholders: {key} {key_lower} {slug} {title} {url}
 # {description} {preamble} {repo} {branch}
@@ -209,12 +219,13 @@ preamble = ""                 # standing instructions, e.g. "Run the tests befor
 [agents.claude]
 args = []                     # extra arguments, e.g. ["--model", "sonnet"]
 
-[teams."Platform"]            # order of a team's workflow states on the board
-state_order = ["Todo", "In Progress", "In Review", "Done"]
+[teams."Platform"]            # order of a team's workflow states on the board; the first
+state_order = ["Backlog", "Todo", "In Progress", "In Review"]   # started one is where a claimed ticket goes
 ```
 
 State lives in `~/.local/state/lanes/` (or `$XDG_STATE_HOME/lanes/`): launched agents,
-manual links, and the panel's socket.
+manual links, and the panel's socket. Edit links with `t`, `T`, `:` or `lanes link`, not by
+hand.
 
 ## What lanes never does
 
@@ -233,6 +244,9 @@ manual links, and the panel's socket.
 - **Pull request says "gh is not signed in"** — run `gh auth login`.
 - **"lanes is already running in tmux pane …"** — only one panel per tmux server.
 - **The launch screen warns about `go run`** — install lanes with `go install`.
+- **A ticket shows the same session twice** — usually `Ctrl-b` reached Claude and moved the
+  session to the background, leaving a forked copy. `lanes unlink <id>` takes the copy off
+  the ticket (lanes' own `Ctrl-b Ctrl-b` no longer lets this happen).
 
 ## Development
 
