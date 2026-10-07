@@ -4,6 +4,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -120,6 +121,7 @@ type Model struct {
 	prCache      map[string]cachedPR  // by directory + "\x00" + branch
 	issueDetails map[string]cachedIssue
 
+	adopting    agent.Agent         // session being adopted or resumed (its plan is built off the loop)
 	review      *review             // suggested-links screen, when open
 	autoChecked map[string]autoSeen // when auto_link last looked at a session
 	modal       *modal
@@ -167,10 +169,14 @@ func (m *Model) fetchAgents() tea.Cmd {
 	f := m.opt.Fleet
 	m.agentSeq++
 	seq := m.agentSeq
+	links := maps.Clone(m.links)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		a, live, err := f.Snapshot(ctx)
+		if err == nil || len(a) > 0 {
+			a = append(a, endedSessions(links, a)...)
+		}
 		return agentsMsg{seq, a, live, err}
 	}
 }
@@ -441,7 +447,7 @@ func (m *Model) View() tea.View {
 	case m.opt.Tmux == nil:
 		b.WriteString(faint.Render(trunc("j/k move · d details · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)", m.width)))
 	default:
-		b.WriteString(faint.Render(trunc("enter show · d details · a approve · n new · A adopt · s send · x stop · l link · L suggest links · r refresh · u assignee · q quit", m.width)))
+		b.WriteString(faint.Render(trunc("enter open · d details · a approve · n new · A adopt · s send · x stop · l link · L suggest links · r refresh · u assignee · q quit", m.width)))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true
@@ -506,7 +512,10 @@ func (m *Model) line(r board.Row) string {
 		if r.Level == 1 { // unlinked: show where it runs
 			s += " · " + home(a.Cwd)
 		}
-		if a.External {
+		switch {
+		case a.Ended:
+			s += " · ended — enter or A resumes"
+		case a.External:
 			s += " (ro)"
 		}
 		if a.RecordID != "" && a.RecordID == m.shown {

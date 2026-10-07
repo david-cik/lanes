@@ -116,3 +116,22 @@ func TestInjectedTextIsNotTyped(t *testing.T) {
 		t.Fatalf("injected mentions weighted as typed: %+v", a1)
 	}
 }
+
+func TestSessionInfo(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "s.jsonl")
+	os.WriteFile(p, []byte(strings.Join([]string{
+		`{"type":"mode","mode":"x"}`,
+		`{"type":"user","cwd":"/src/app","message":{"content":"hi"}}`,
+		`{"type":"ai-title","aiTitle":"Early title"}`,
+		`{"type":"ai-title","aiTitle":"Fix login redirect"}`,
+		`garbage`,
+	}, "\n")), 0o600)
+	in, err := SessionInfo(p)
+	if err != nil || in.Cwd != "/src/app" || in.Title != "Fix login redirect" || in.When.IsZero() {
+		t.Fatalf("%+v %v", in, err)
+	}
+	os.WriteFile(p, []byte(`{"cwd":"/x"}`+"\n"+`{"type":"ai-title","aiTitle":"ai"}`+"\n"+`{"type":"custom-title","customTitle":"mine"}`+"\n"), 0o600)
+	if in, _ := SessionInfo(p); in.Title != "mine" {
+		t.Fatalf("custom title should win: %+v", in)
+	}
+}

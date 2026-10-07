@@ -66,9 +66,9 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | Key | Does |
 |---|---|
 | `j` `k` `g` `G` | move |
-| `enter` | show the selected agent in the right pane (lanes-started agents) |
+| `enter` | on an agent: show it in the right pane · on a ticket: show its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it |
 | `n` | start an agent on the selected ticket |
-| `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running) |
+| `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running); on an ended session, resume it |
 | `a` | answer the selected (or oldest) waiting permission request |
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
@@ -120,6 +120,10 @@ agent's own text, and recent mentions above old ones. Clear matches come pre-che
 mixed ones show the alternatives. Nothing is linked until you press enter, and `l`
 changes or removes any link. With `auto_link = true`, new sessions with one clearly
 dominant ticket are linked automatically.
+
+Linked sessions that have ended (closed terminal, killed process) stay on the board under
+their ticket for 14 days, marked "ended". `enter` or `A` resumes one in a lanes pane with
+its conversation intact, so lanes controls it from then on.
 
 By default, sessions you start yourself show up read-only with polled status. To give
 them live status, activity, and approvals too:

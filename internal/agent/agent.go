@@ -27,6 +27,7 @@ type Agent struct {
 	Status    Status
 	Since     time.Time
 	External  bool   // not launched by lanes: read-only
+	Ended     bool   // a linked session that is no longer running (A resumes it)
 	TicketKey string // preset for launched agents; otherwise filled by matching
 	RecordID  string // lanes launch record, for launched agents
 	Pane      string // tmux pane, for launched agents

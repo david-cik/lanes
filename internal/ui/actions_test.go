@@ -292,3 +292,20 @@ func TestAdoptRefusesManagedAgent(t *testing.T) {
 type claudeLike struct{ stopper }
 
 func (claudeLike) CanFork() bool { return true }
+
+func TestAdoptInNonRepoFolderHasNoLock(t *testing.T) {
+	m, _ := controlModel(t)
+	m.opt.Adapters = []agent.Adapter{claudeLike{stopper{}}}
+	dir := t.TempDir() // not a git repo
+	m.live = append(m.live, state.Record{ID: "r9", Tool: "claude", TicketKey: "ABC-1", Worktree: dir, Pane: "%9"})
+	snap := m.opt.Fleet.(*fleetSnap)
+	snap.agents[2].Cwd, snap.agents[2].TicketKey = dir, "ABC-1"
+	m.agents = append([]agent.Agent{}, snap.agents...)
+	m.rebuild()
+	m.cursorTo(t, "outside")
+	_, cmd := m.Update(keyName("A"))
+	m.Update(cmd())
+	if m.modal == nil || !m.modal.confirm {
+		t.Fatalf("a folder that isn't a checkout should not be locked; notice %q", m.notice)
+	}
+}

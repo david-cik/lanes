@@ -24,8 +24,9 @@ type (
 		err     error
 	}
 	launchedMsg struct {
-		rec state.Record
-		err error
+		rec     state.Record
+		err     error
+		resumed string // ended session this resumed; its link is retired
 	}
 )
 
@@ -90,10 +91,57 @@ func (m *Model) adapter(name string) agent.Adapter {
 
 // --- right slot ---
 
+// focusSelected is enter: on a lanes agent it shows it; on an ended session it resumes
+// it; on a ticket it shows the ticket's lanes agent, or offers to resume one of its
+// ended sessions or start a new agent.
 func (m *Model) focusSelected() tea.Cmd {
+	r, ok := m.selected()
+	switch {
+	case ok && r.Kind == board.TicketRow:
+		return m.openTicket(*r.Issue)
+	case ok && r.Kind == board.AgentRow && r.Agent.Ended:
+		return m.adoptSelected()
+	}
 	if a, ok := m.controllable(); ok {
 		m.focus(a.RecordID, a.Pane)
 	}
+	return nil
+}
+
+func (m *Model) openTicket(issue tracker.Issue) tea.Cmd {
+	var ended []agent.Agent
+	for _, a := range m.agents {
+		if a.TicketKey != issue.Key {
+			continue
+		}
+		if a.RecordID != "" && m.opt.Tmux != nil && !m.stopping[a.RecordID] {
+			m.focus(a.RecordID, a.Pane)
+			return nil
+		}
+		if a.Ended {
+			ended = append(ended, a)
+		}
+	}
+	if len(ended) == 0 {
+		return m.newAgent()
+	}
+	items := []choice{{"Start a new agent", ""}}
+	for _, a := range ended {
+		items = append(items, choice{fmt.Sprintf("Resume %s  %s", a.Name, faint.Render("ended "+ago(m.now().Sub(a.Since)))), a.ID})
+	}
+	m.modal = &modal{title: issue.Key + " has no running agent", items: items,
+		onChoose: func(c choice) tea.Cmd {
+			if c.value == "" {
+				return m.newAgent()
+			}
+			for i := range m.rows {
+				if a := m.rows[i].Agent; a != nil && a.Ended && a.ID == c.value {
+					m.cursor = i
+					return m.adoptSelected()
+				}
+			}
+			return nil
+		}}
 	return nil
 }
 
@@ -266,7 +314,7 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cancel()
 				rec, err := launch.Run(ctx, p, tm, store)
-				return launchedMsg{rec, err}
+				return launchedMsg{rec: rec, err: err}
 			}
 		}}
 	return nil
@@ -279,6 +327,12 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 	}
 	m.live = append(m.live, msg.rec)
 	m.launchSeq = m.agentSeq // refreshes already in flight don't know this agent
+	if msg.resumed != "" {   // the fork carries the ticket now; retire the ended session's row
+		delete(m.links, state.LinkKey(msg.rec.Tool, msg.resumed))
+		if err := m.opt.Store.SaveLinks(m.links); err != nil {
+			m.say("", err)
+		}
+	}
 	m.focus(msg.rec.ID, msg.rec.Pane)
 	m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)
 	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane))
@@ -424,6 +478,7 @@ func (m *Model) adoptSelected() tea.Cmd {
 	}
 	sess := *a
 	cfg := m.opt.Config
+	m.adopting = sess
 	adopt := func(issue tracker.Issue) tea.Cmd {
 		d := tracker.IssueDetail{Issue: issue}
 		if c, ok := m.issueDetails[issue.Key]; ok && c.err == nil {
@@ -460,32 +515,44 @@ func (m *Model) confirmAdopt(p launch.Plan, name string) tea.Cmd {
 	if _, ok := p.Adapter.(agent.Hooker); ok {
 		p.HookBin, p.Socket = m.opt.HookBin, m.opt.Socket
 	}
-	if _, err := launch.Check(m.live, p.Worktree, p.Ticket.Key); err != nil {
-		m.say("", err)
-		return nil
+	// The one-agent-per-folder lock protects a git checkout from two agents editing it.
+	// A folder that isn't a checkout (e.g. a parent of many repos) has no branch and no lock.
+	if p.Branch != "" {
+		if _, err := launch.Check(m.live, p.Worktree, p.Ticket.Key); err != nil {
+			m.say("", err)
+			return nil
+		}
 	}
 	branch := p.Branch
 	if branch == "" {
 		branch = "(none)"
 	}
+	ended := m.adopting.Ended && m.adopting.ID == p.ResumeFrom
 	lines := []string{
 		"tool:   " + p.Adapter.Name(),
 		"folder: " + home(p.Worktree),
 		"branch: " + branch,
 		"",
-		"lanes starts a copy of this conversation in its own pane.",
-		"The original keeps running in its terminal — close it when you're done.",
+	}
+	title, verb := "Adopt "+name+" for "+p.Ticket.Key+"?", "adopting "
+	resumed := ""
+	if ended {
+		title, verb, resumed = "Resume "+name+" for "+p.Ticket.Key+"?", "resuming ", p.ResumeFrom
+		lines = append(lines, "lanes picks this conversation up again in its own pane.")
+	} else {
+		lines = append(lines, "lanes starts a copy of this conversation in its own pane.",
+			"The original keeps running in its terminal — close it when you're done.")
 	}
 	tm, store := m.opt.Tmux, m.opt.Store
 	m.notice = ""
-	m.modal = &modal{confirm: true, title: "Adopt " + name + " for " + p.Ticket.Key + "?", lines: lines,
+	m.modal = &modal{confirm: true, title: title, lines: lines,
 		onYes: func() tea.Cmd {
-			m.say("adopting "+name+"…", nil)
+			m.say(verb+name+"…", nil)
 			return func() tea.Msg {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
 				rec, err := launch.Run(ctx, p, tm, store)
-				return launchedMsg{rec, err}
+				return launchedMsg{rec, err, resumed}
 			}
 		}}
 	return nil

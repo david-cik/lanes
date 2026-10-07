@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Only the end of a transcript is read: recent work says most about what the session
@@ -187,4 +188,67 @@ func Score(r io.Reader, open map[string]bool) Result {
 		return strings.Compare(a.Key, b.Key)
 	})
 	return out
+}
+
+// Info is what a transcript says about its session.
+type Info struct {
+	Cwd   string
+	Title string // latest custom or AI-generated title
+	When  time.Time
+}
+
+// SessionInfo reads a transcript's folder (from its start) and latest title (from its
+// end). Like the rest of this package it tolerates lines it doesn't understand.
+func SessionInfo(path string) (Info, error) {
+	var in Info
+	f, err := os.Open(path)
+	if err != nil {
+		return in, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return in, err
+	}
+	in.When = fi.ModTime()
+	var head struct {
+		Cwd string `json:"cwd"`
+	}
+	sc := bufio.NewScanner(io.LimitReader(f, 256<<10))
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	for sc.Scan() && in.Cwd == "" {
+		if json.Unmarshal(sc.Bytes(), &head) == nil {
+			in.Cwd = head.Cwd
+		}
+	}
+	const tail = 512 << 10
+	if fi.Size() > tail {
+		f.Seek(-tail, io.SeekEnd)
+	} else {
+		f.Seek(0, io.SeekStart)
+	}
+	var t struct {
+		Type   string `json:"type"`
+		Custom string `json:"customTitle"`
+		AI     string `json:"aiTitle"`
+	}
+	custom := ""
+	sc = bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	for sc.Scan() {
+		t.Custom, t.AI = "", ""
+		if json.Unmarshal(sc.Bytes(), &t) != nil {
+			continue
+		}
+		switch {
+		case t.Type == "custom-title" && t.Custom != "":
+			custom = t.Custom
+		case t.Type == "ai-title" && t.AI != "":
+			in.Title = t.AI
+		}
+	}
+	if custom != "" {
+		in.Title = custom
+	}
+	return in, nil
 }

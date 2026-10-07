@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,7 +54,7 @@ func (m *Model) unlinkedClaude() []agent.Agent {
 	open := m.openKeys()
 	var out []agent.Agent
 	for _, a := range m.agents {
-		if a.External && a.Tool == "claude" && !open[a.TicketKey] && m.links[state.LinkKey(a.Tool, a.ID)] == "" {
+		if a.External && !a.Ended && a.Tool == "claude" && !open[a.TicketKey] && m.links[state.LinkKey(a.Tool, a.ID)] == "" {
 			out = append(out, a)
 		}
 	}
@@ -243,4 +244,39 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 	err := m.opt.Store.SaveLinks(m.links)
 	m.rebuild()
 	m.say(fmt.Sprintf("auto-linked %s → %s (l changes it)", msg.name, msg.res[0].Key), err)
+}
+
+// endedMax hides ended sessions whose transcript hasn't changed in this long.
+const endedMax = 14 * 24 * time.Hour
+
+// endedSessions turns links to Claude sessions that are no longer running into board
+// rows, so you can still find and resume them. Runs off the UI loop (reads transcripts).
+func endedSessions(links state.Links, running []agent.Agent) []agent.Agent {
+	alive := map[string]bool{}
+	for _, a := range running {
+		alive[state.LinkKey(a.Tool, a.ID)] = true
+	}
+	var out []agent.Agent
+	for k, ticket := range links {
+		tool, sid, ok := strings.Cut(k, ":")
+		if !ok || ticket == "" || tool != "claude" || alive[k] {
+			continue
+		}
+		p := suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), "", sid)
+		if p == "" {
+			continue
+		}
+		in, err := suggest.SessionInfo(p)
+		if err != nil || in.Cwd == "" || time.Since(in.When) > endedMax {
+			continue
+		}
+		name := in.Title
+		if name == "" {
+			name = "session " + sid[:min(8, len(sid))]
+		}
+		out = append(out, agent.Agent{ID: sid, Tool: tool, Name: name, Cwd: in.Cwd, Status: agent.Done,
+			Since: in.When, External: true, Ended: true, TicketKey: ticket})
+	}
+	slices.SortFunc(out, func(a, b agent.Agent) int { return b.Since.Compare(a.Since) })
+	return out
 }

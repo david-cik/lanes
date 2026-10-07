@@ -146,3 +146,66 @@ func TestAutoLinkRespectsUnlinkAndOtherAssignee(t *testing.T) {
 		t.Fatal("auto_link ran while viewing another person's tickets")
 	}
 }
+
+func endedTranscript(t *testing.T, cfg, sid, cwd, title string) {
+	t.Helper()
+	dir := filepath.Join(cfg, "projects", "somewhere")
+	os.MkdirAll(dir, 0o700)
+	body := fmt.Sprintf(`{"type":"user","cwd":%q,"message":{"content":"hi"}}`+"\n"+`{"type":"ai-title","aiTitle":%q}`+"\n", cwd, title)
+	os.WriteFile(filepath.Join(dir, sid+".jsonl"), []byte(body), 0o600)
+}
+
+func TestEndedLinkedSessionsShowAndResume(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	endedTranscript(t, cfg, "dead1", t.TempDir(), "Fix the login redirect")
+	ended := endedSessions(map[string]string{"claude:dead1": "ABC-1", "claude:alive": "ABC-1", "claude:nolog": "ABC-1", "claude:off": ""},
+		[]agent.Agent{{ID: "alive", Tool: "claude"}})
+	if len(ended) != 1 || ended[0].Name != "Fix the login redirect" || !ended[0].Ended || ended[0].TicketKey != "ABC-1" {
+		t.Fatalf("ended %+v", ended)
+	}
+
+	m, ft := controlModel(t)
+	m.opt.Adapters = []agent.Adapter{claudeLike{stopper{}}}
+	m.links["claude:dead1"] = "ABC-1"
+	snap := m.opt.Fleet.(*fleetSnap)
+	snap.agents = []agent.Agent{snap.agents[2], ended[0]} // no lanes agents on ABC-1 now
+	snap.live = nil
+	m.Update(agentsMsg{seq: 99, agents: snap.agents})
+	if v := view(m); !strings.Contains(v, "· claude Fix the login redirect done") || !strings.Contains(v, "ended — enter or A resumes") {
+		t.Fatalf("view:\n%s", v)
+	}
+	// enter on the ticket offers: new agent, or resume the ended session
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(key("enter"))
+	if m.modal == nil || len(m.modal.items) != 2 || !strings.Contains(m.modal.items[1].label, "Resume Fix the login redirect") {
+		t.Fatalf("modal %+v", m.modal)
+	}
+	m.Update(key("down"))
+	_, cmd := m.Update(key("enter")) // resume → plan built off the loop
+	m.Update(cmd())
+	if m.modal == nil || !strings.HasPrefix(m.modal.title, "Resume Fix the login redirect for ABC-1") {
+		t.Fatalf("confirm %+v", m.modal)
+	}
+	_, cmd = m.Update(key("y"))
+	m.Update(cmd())
+	if !strings.Contains(strings.Join(ft.log, "|"), "new lanes-") {
+		t.Fatalf("not started: %v", ft.log)
+	}
+	if _, ok := m.links["claude:dead1"]; ok {
+		t.Fatal("resumed session's link not retired")
+	}
+}
+
+func TestEnterOnEmptyTicketStartsNewAgent(t *testing.T) {
+	m, _ := controlModel(t)
+	snap := m.opt.Fleet.(*fleetSnap)
+	snap.agents, snap.live = nil, nil
+	m.Update(agentsMsg{seq: 99})
+	m.opt.Tracker = detailTracker{&fakeTracker{}}
+	m.cursorTo(t, "ABC-1 fix it")
+	_, cmd := m.Update(key("enter"))
+	if cmd == nil || !strings.Contains(m.notice, "loading ABC-1") {
+		t.Fatalf("enter on an empty ticket should start the new-agent flow; notice %q", m.notice)
+	}
+}
