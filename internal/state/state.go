@@ -28,6 +28,9 @@ type Record struct {
 	SessionID string    `json:"session_id"` // the tool's own session id
 	Pane      string    `json:"pane"`       // tmux pane id, e.g. %12
 	CreatedAt time.Time `json:"created_at"`
+	// AdoptedFrom is the session this one was forked from (adopt or resume). The
+	// original may keep running; the board hides it while this agent lives.
+	AdoptedFrom string `json:"adopted_from,omitempty"`
 }
 
 // Session is the tmux session that is this agent's home.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/board"
+	"github.com/david-cik/lanes/internal/state"
 )
 
 // moveTo puts the cursor on row i (clamped); the right pane follows the selection.
@@ -283,4 +284,26 @@ func (m *Model) togglePool() {
 			}
 		}
 	}
+}
+
+// dropAdopted leaves out sessions that a running lanes agent was forked from: adopting
+// keeps the original running, but it's the same work, so the board shows it once.
+func dropAdopted(agents []agent.Agent, live []state.Record) []agent.Agent {
+	from := map[string]bool{}
+	for _, r := range live {
+		if r.AdoptedFrom != "" {
+			from[r.AdoptedFrom] = true
+		}
+	}
+	if len(from) == 0 {
+		return agents
+	}
+	var out []agent.Agent
+	for _, a := range agents {
+		if a.RecordID == "" && from[a.ID] {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }

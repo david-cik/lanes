@@ -317,7 +317,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agentSeen = msg.seq
 		m.agentErr = msg.err
 		if msg.err == nil || len(msg.agents) > 0 {
-			m.agents, m.live = msg.agents, msg.live
+			m.agents, m.live = dropAdopted(msg.agents, msg.live), msg.live
 			if msg.links != nil {
 				m.links = msg.links
 			}

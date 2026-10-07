@@ -127,3 +127,13 @@ func TestClickBelowShortListPicksNothing(t *testing.T) {
 		t.Fatalf("picked %q", picked)
 	}
 }
+
+func TestAdoptedOriginalIsHidden(t *testing.T) {
+	m, _ := controlModel(t)
+	snap := m.opt.Fleet.(*fleetSnap)
+	snap.live[0].AdoptedFrom = "x9" // agent "one" was forked from the external "outside"
+	m.Update(agentsMsg{seq: m.agentSeq + 1, agents: snap.agents, live: snap.live})
+	if v := view(m); strings.Contains(v, "outside") || !strings.Contains(v, "one") {
+		t.Fatalf("adopted original still shown:\n%s", v)
+	}
+}

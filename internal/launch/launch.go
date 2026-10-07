@@ -212,7 +212,7 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 	}
 	rec := state.Record{
 		ID: state.NewID(), Tool: p.Adapter.Name(), TicketKey: p.Ticket.Key, Repo: p.Repo.Path,
-		Worktree: p.Worktree, Branch: p.Branch, CreatedAt: time.Now().UTC(),
+		Worktree: p.Worktree, Branch: p.Branch, CreatedAt: time.Now().UTC(), AdoptedFrom: p.ResumeFrom,
 	}
 	rec.Name = strings.TrimSpace(p.Ticket.Key + " " + Slug(p.Ticket.Title))
 	cmd := p.Adapter.Command(agent.LaunchSpec{
