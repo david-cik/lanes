@@ -167,9 +167,9 @@ flags:
 			return err
 		}
 		opt.Tmux, opt.Panel, opt.Placeholder = tm, panel, placeholder
-		label, notice, restore := setupFocus(tm, panel, cfg.FocusKey)
+		label, notice, double, restore := setupFocus(tm, panel, cfg.FocusKey)
 		defer restore()
-		opt.FocusLabel = label
+		opt.FocusLabel, opt.DoublePrefix = label, double
 		opt.Prefix = keyLabel(tm.GlobalOpt("prefix"))
 		if notice != "" {
 			opt.Notice = notice
@@ -326,7 +326,7 @@ exec cat >/dev/null`
 // panel runs in: mouse support on, and one key (focus_key) that jumps between them,
 // with a reminder in the status bar. Everything is restored when lanes quits; the key
 // only acts in this session and passes through everywhere else.
-func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restore func()) {
+func setupFocus(tm tmux.Client, panel, key string) (label, notice string, double bool, restore func()) {
 	var undo []func()
 	restore = func() {
 		for i := len(undo) - 1; i >= 0; i-- {
@@ -347,6 +347,9 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restor
 		})
 	}
 	setOpt("mouse", "on")
+	if session, err := tm.SessionOf(panel); err == nil {
+		double = guardPrefix(tm, session, panel, &undo)
+	}
 	if key == "" || key == "none" {
 		// No extra binding: move with the tmux prefix and arrows (or click). Drop a
 		// focus binding an older lanes or a crashed panel may have left behind.
@@ -359,48 +362,59 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restor
 		}
 		label = keyLabel(tm.GlobalOpt("prefix")) + " " + arrows
 		setOpt("status-right", fmt.Sprintf(" %s or click: board ⇄ agent ", label))
-		return label, "", restore
+		return label, "", double, restore
 	}
 	session, err := tm.SessionOf(panel)
 	if err != nil {
-		return "", "", restore
+		return "", "", double, restore
 	}
 	label = keyLabel(key)
 	existing := tm.RootBinding(key)
 	if existing != "" && !strings.Contains(existing, "#{==:#{session_name},") { // the user's own
-		return "", fmt.Sprintf("%s is already bound in your tmux, so lanes left it alone (set focus_key in the lanes config)", label), restore
+		return "", fmt.Sprintf("%s is already bound in your tmux, so lanes left it alone (set focus_key in the lanes config)", label), double, restore
 	}
 	if err := tm.BindFocusToggle(key, session, panel); err != nil {
-		return "", "focus key: " + err.Error(), restore
+		return "", "focus key: " + err.Error(), double, restore
 	}
 	undo = append(undo, func() { tm.Unbind(key) })
 	setOpt("status-right", fmt.Sprintf(" %s or click: board ⇄ agent ", label))
-	return label + " ⇄", "", restore
+	return label + " ⇄", "", double, restore
 }
-
-// stockPrefix is tmux's own prefix binding for the keys lanes borrows ("" = unbound).
-var stockPrefix = map[string]string{"h": "", "l": "last-window"}
 
 // bindPaneKeys makes prefix+h / prefix+l move between board and agent in the lanes
 // session, as in herdr. Elsewhere they keep tmux's stock behavior; a key the user
 // bound themselves is left alone. Reports whether both were bound.
 func bindPaneKeys(tm tmux.Client, session string, undo *[]func()) bool {
-	ok := true
-	for key, dir := range map[string]string{"h": "L", "l": "R"} {
-		stock := stockPrefix[key]
-		cur := tm.PrefixBinding(key)
-		ours := strings.Contains(cur, "#{==:#{session_name},") // left by a crashed lanes
-		if cur != "" && !ours && (strings.Contains(cur, " -r ") || tmux.BoundCommand(cur) != stock) {
-			ok = false // the user's own binding
-			continue
-		}
-		if tm.BindPrefixPane(key, session, dir, stock) != nil {
-			ok = false
-			continue
-		}
-		*undo = append(*undo, func() { tm.RestorePrefix(key, stock) })
+	h := borrowPrefix(tm, "h", "", session, "select-pane -L", undo)
+	l := borrowPrefix(tm, "l", "last-window", session, "select-pane -R", undo)
+	return h && l
+}
+
+// guardPrefix makes the prefix pressed twice switch between board and agent in the
+// lanes session, instead of sending the prefix key to the agent — for Claude, Ctrl-b
+// moves the session to the background. Elsewhere it still sends the prefix.
+func guardPrefix(tm tmux.Client, session, panel string, undo *[]func()) bool {
+	key := tm.GlobalOpt("prefix")
+	if key == "" || key == "h" || key == "l" {
+		return false
 	}
-	return ok
+	return borrowPrefix(tm, key, "send-prefix", session, tmux.Toggle(panel), undo)
+}
+
+// borrowPrefix binds prefix+key to action in the lanes session, keeping stock (tmux's
+// own binding for it, "" = none) everywhere else, and restores stock on quit. A key the
+// user bound themselves is left alone.
+func borrowPrefix(tm tmux.Client, key, stock, session, action string, undo *[]func()) bool {
+	cur := tm.PrefixBinding(key)
+	ours := strings.Contains(cur, "#{==:#{session_name},") // left by a crashed lanes
+	if cur != "" && !ours && (strings.Contains(cur, " -r ") || tmux.BoundCommand(cur) != stock) {
+		return false // the user's own binding
+	}
+	if tm.BindPrefix(key, session, action, stock) != nil {
+		return false
+	}
+	*undo = append(*undo, func() { tm.RestorePrefix(key, stock) })
+	return true
 }
 
 // keyLabel turns a tmux key name into what people call it: C-] → Ctrl-], M-Left → Alt-Left.

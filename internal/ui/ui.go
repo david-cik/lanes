@@ -88,6 +88,9 @@ type Options struct {
 	Readers    Readers           // git / PR / browser access for details; zero = real ones
 	FocusLabel string            // key that jumps between board and agent, e.g. "Ctrl-]"; "" = none
 	Prefix     string            // the tmux prefix as people write it, e.g. "Ctrl-b"
+	// DoublePrefix: the prefix pressed twice switches board ⇄ agent here instead of
+	// reaching the agent (where Claude takes Ctrl-b as "move to the background").
+	DoublePrefix bool
 }
 
 type Model struct {

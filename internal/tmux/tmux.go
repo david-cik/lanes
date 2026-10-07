@@ -204,15 +204,19 @@ func BoundCommand(line string) string {
 // BindFocusToggle makes key, pressed anywhere in session, jump between the panel and
 // the pane to its right. Outside session the key is passed through to the program.
 func (c Client) BindFocusToggle(key, session, panel string) error {
-	inner := fmt.Sprintf("if-shell -F '#{==:#{pane_id},%s}' 'select-pane -R' 'select-pane -t %s'", panel, panel)
-	_, err := c.run("bind-key", "-n", key, "if-shell", "-F", "#{==:#{session_name},"+session+"}", inner, "send-keys "+key)
+	_, err := c.run("bind-key", "-n", key, "if-shell", "-F", "#{==:#{session_name},"+session+"}", Toggle(panel), "send-keys "+key)
 	return err
 }
 
-// BindPrefixPane makes prefix+key select the pane in direction dir (L, R) inside
-// session; elsewhere it runs fallback, a tmux command ("" = nothing).
-func (c Client) BindPrefixPane(key, session, dir, fallback string) error {
-	args := []string{"bind-key", "-T", "prefix", key, "if-shell", "-F", "#{==:#{session_name}," + session + "}", "select-pane -" + dir}
+// Toggle is the tmux command that jumps between the panel and the pane to its right.
+func Toggle(panel string) string {
+	return fmt.Sprintf("if-shell -F '#{==:#{pane_id},%s}' 'select-pane -R' 'select-pane -t %s'", panel, panel)
+}
+
+// BindPrefix makes prefix+key run action (a tmux command) inside session; elsewhere
+// it runs fallback ("" = nothing).
+func (c Client) BindPrefix(key, session, action, fallback string) error {
+	args := []string{"bind-key", "-T", "prefix", key, "if-shell", "-F", "#{==:#{session_name}," + session + "}", action}
 	if fallback != "" {
 		args = append(args, fallback)
 	}

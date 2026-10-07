@@ -177,7 +177,7 @@ func TestPrefixPaneBindingRestores(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := c.PrefixBinding("l")
-	if err := c.BindPrefixPane("l", "lanes", "R", "last-window"); err != nil {
+	if err := c.BindPrefix("l", "lanes", "select-pane -R", "last-window"); err != nil {
 		t.Fatal(err)
 	}
 	if b := c.PrefixBinding("l"); !strings.Contains(b, "#{==:#{session_name},lanes}") || !strings.Contains(b, "select-pane -R") || !strings.Contains(b, "last-window") {
@@ -187,7 +187,7 @@ func TestPrefixPaneBindingRestores(t *testing.T) {
 	if after := c.PrefixBinding("l"); strings.Join(strings.Fields(after), " ") != strings.Join(strings.Fields(before), " ") {
 		t.Fatalf("restored %q, was %q", after, before)
 	}
-	c.BindPrefixPane("h", "lanes", "L", "")
+	c.BindPrefix("h", "lanes", "select-pane -L", "")
 	c.RestorePrefix("h", "")
 	if b := c.PrefixBinding("h"); b != "" {
 		t.Fatalf("h still bound: %q", b)
@@ -203,5 +203,23 @@ func TestPrefixBindingFoundWithRepeatFlag(t *testing.T) {
 	b := c.PrefixBinding("h")
 	if !strings.Contains(b, " -r ") || BoundCommand(b) != "select-pane -L" {
 		t.Fatalf("binding %q command %q", b, BoundCommand(b))
+	}
+}
+
+func TestDoublePrefixToggleRestores(t *testing.T) {
+	c := server(t)
+	panel, err := c.NewSession("lanes", t.TempDir(), nil, sleeper("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.BindPrefix("C-b", "lanes", Toggle(panel), "send-prefix"); err != nil {
+		t.Fatal(err)
+	}
+	if b := c.PrefixBinding("C-b"); !strings.Contains(b, "select-pane -t "+panel) || !strings.Contains(b, "send-prefix") {
+		t.Fatalf("binding %q", b)
+	}
+	c.RestorePrefix("C-b", "send-prefix")
+	if BoundCommand(c.PrefixBinding("C-b")) != "send-prefix" {
+		t.Fatalf("restored %q", c.PrefixBinding("C-b"))
 	}
 }

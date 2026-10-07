@@ -428,6 +428,11 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 	if m.modal != nil {
 		t.Fatal("? didn't close the key list")
 	}
+	m.opt.DoublePrefix = true
+	m.Update(key("?"))
+	if v := view(m); !rowHas(v, "Ctrl-b Ctrl-b", "also board ⇄ agent") || strings.Contains(v, "avoid in an agent") {
+		t.Fatalf("help with the double prefix guarded:\n%s", v)
+	}
 }
 
 func TestLinkMadeOutsidePanelShowsOnRefresh(t *testing.T) {

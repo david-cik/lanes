@@ -102,7 +102,10 @@ func (m *Model) panesHelp() []string {
 		[2]string{"click", "a pane to move into it"},
 		[2]string{p + " z", "zoom the agent pane (again to unzoom)"},
 	)
-	if p == "Ctrl-b" {
+	switch {
+	case m.opt.DoublePrefix:
+		rows = append(rows, [2]string{p + " " + p, "also board ⇄ agent (it never reaches the agent)"})
+	case p == "Ctrl-b":
 		rows = append(rows, [2]string{"Ctrl-b Ctrl-b", "avoid in an agent: it sends Ctrl-b to Claude,"},
 			[2]string{"", "which moves the session to the background"})
 	}
