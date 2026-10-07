@@ -443,3 +443,39 @@ func TestLinkMadeOutsidePanelShowsOnRefresh(t *testing.T) {
 		t.Fatalf("links %v", l)
 	}
 }
+
+func TestAskProposesThenLinksOnConfirm(t *testing.T) {
+	m, _ := controlModel(t)
+	var gotPrompt string
+	m.readers.Ask = func(_ context.Context, system, prompt string) (string, error) {
+		gotPrompt = prompt
+		return "Sure: ```json\n{\"session\":\"x9\",\"ticket\":\"ABC-1\",\"reason\":\"it talks about fixing it\"}\n```", nil
+	}
+	m.Update(key("/"))
+	for _, r := range "attach outside to ABC-1" {
+		m.Update(key(string(r)))
+	}
+	_, cmd := m.Update(key("enter"))
+	_, cmd = m.Update(cmd()) // askMsg → confirm
+	if !strings.Contains(gotPrompt, "attach outside to ABC-1") || !strings.Contains(gotPrompt, `"open_tickets"`) {
+		t.Fatalf("prompt %s", gotPrompt)
+	}
+	if m.modal == nil || m.modal.title != "Link outside to ABC-1?" || !strings.Contains(strings.Join(m.modal.lines, " "), "talks about fixing it") {
+		t.Fatalf("confirm %+v", m.modal)
+	}
+	m.Update(key("y"))
+	if l, _ := m.opt.Store.Links(); l["claude:x9"] != "ABC-1" {
+		t.Fatalf("links %v", l)
+	}
+}
+
+func TestAskQuestionAndGarbage(t *testing.T) {
+	m, _ := controlModel(t)
+	m.Update(askMsg{question: "which of the two CSP sessions?"})
+	if !strings.Contains(m.notice, "Claude asks: which of the two") || m.modal != nil {
+		t.Fatalf("notice %q", m.notice)
+	}
+	if r := parseAsk("no json here"); r.err == nil {
+		t.Fatal("garbage accepted")
+	}
+}

@@ -46,6 +46,7 @@ var helpLines = []string{
 	"  x          stop the agent (worktree and branch are kept)",
 	"  l          move a session to another ticket, or remove it from its ticket",
 	"  L          suggest tickets for unlinked sessions from their transcripts",
+	"  /          ask Claude, e.g. \"attach my CSP session to ABC-12\" (you confirm)",
 	"  a          answer a waiting permission request",
 	"  d          details: git, pull request, activity  ·  o  open PR / ticket",
 	"  u          show someone else's tickets  ·  r  refresh  ·  q  quit",

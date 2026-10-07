@@ -64,6 +64,7 @@ type Readers struct {
 	Git  func(ctx context.Context, dir string) (gitinfo.Info, error)
 	PR   func(ctx context.Context, dir, branch string) (*gh.PR, error)
 	Open func(url string) error
+	Ask  func(ctx context.Context, system, prompt string) (string, error) // one-shot Claude
 }
 
 func defaultReaders() Readers {
@@ -72,6 +73,7 @@ func defaultReaders() Readers {
 		PR: func(ctx context.Context, dir, branch string) (*gh.PR, error) {
 			return gh.Find(ctx, gh.Exec, dir, branch)
 		},
+		Ask: claudeAsk("sonnet"),
 		Open: func(url string) error {
 			if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
 				return fmt.Errorf("not opening %q: not a web address", url)

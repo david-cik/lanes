@@ -75,6 +75,7 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `x` | stop the selected agent (its worktree and branch are kept) |
 | `l` | move a session to another ticket, or remove it from its ticket (saved; matching by branch, `L` and `auto_link` won't put it back; an ended session that's removed disappears from the board) |
 | `L` | suggest links: read unlinked Claude sessions' transcripts and propose a ticket for each |
+| `/` | ask Claude in plain words, e.g. "attach my CSP session to ABC-12" — it proposes the link, you confirm |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |
 | `u` | show another person's tickets |
@@ -147,6 +148,17 @@ them live status, activity, and approvals too:
 lanes install-hooks      # asks first, keeps a backup of ~/.claude/settings.json
 lanes uninstall-hooks    # removes exactly what install-hooks added
 ```
+
+### From any Claude session
+
+```sh
+lanes sessions [words…]          # running and recent sessions: title, folder, first prompt, ticket, mentions
+lanes link <session-id> <TICKET> # attach (id prefix is enough)
+lanes unlink <session-id>        # take off its ticket
+```
+
+Copy `skills/lanes` into `~/.claude/skills/` and you can just tell Claude "attach my
+session about the export bug to ABC-12". A running panel shows the change within seconds.
 
 ## Configuration
 

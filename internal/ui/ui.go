@@ -139,6 +139,9 @@ func New(opt Options) *Model {
 	if m.readers.Git == nil {
 		m.readers = defaultReaders()
 	}
+	if m.readers.Ask == nil {
+		m.readers.Ask = claudeAsk("sonnet")
+	}
 	m.notice = opt.Notice
 	if l, err := opt.Store.Links(); err == nil {
 		m.links = l
@@ -292,6 +295,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotDetail(msg)
 	case planMsg:
 		return m, m.confirmLaunch(msg.plan)
+	case askMsg:
+		return m, m.gotAsk(msg)
 	case adoptPlanMsg:
 		return m, m.confirmAdopt(msg.plan, msg.name)
 	case suggestMsg:
@@ -373,6 +378,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.adoptSelected()
 	case "L":
 		return m.suggestLinks()
+	case "/":
+		return m.ask()
 	}
 	return nil
 }
