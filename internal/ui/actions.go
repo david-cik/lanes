@@ -528,13 +528,17 @@ func (m *Model) setTicket(a agent.Agent, ticket string) error {
 	if i < 0 {
 		return fmt.Errorf("%s is no longer running", a.Name)
 	}
-	m.live[i].TicketKey = ticket
+	r, err := m.opt.Store.SetRecordTicket(a.RecordID, ticket) // fresh read under the lock
+	if err != nil {
+		return err
+	}
+	m.live[i] = r
 	for j := range m.agents {
 		if m.agents[j].RecordID == a.RecordID {
 			m.agents[j].TicketKey = ticket
 		}
 	}
-	return m.opt.Store.Save(m.live[i])
+	return nil
 }
 
 // setLink saves one link without overwriting links changed meanwhile by `lanes link`.

@@ -77,6 +77,11 @@ func controlModel(t *testing.T) (*Model, *fakeTmux) {
 			{ID: "r2", Tool: "claude", TicketKey: "ABC-1", Pane: "%2"},
 		},
 	}
+	for _, r := range snap.live { // launch records exist on disk, as in a real run
+		if err := m.opt.Store.Save(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	m.opt.Fleet = snap
 	m.Update(agentsMsg{agents: snap.agents, live: snap.live})
 	return m, ft
@@ -376,6 +381,9 @@ func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
 	m.Update(key("enter")) // Remove from ABC-1
 	if m.live[0].TicketKey != state.NoTicket {
 		t.Fatalf("record %+v", m.live[0])
+	}
+	if recs, _ := m.opt.Store.All(); recs[0].TicketKey != state.NoTicket {
+		t.Fatalf("saved record %+v", recs[0])
 	}
 	if who := m.whoIs("r1"); who != "one" {
 		t.Fatalf("removed agent is called %q in messages", who)
