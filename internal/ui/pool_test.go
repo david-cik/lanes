@@ -33,18 +33,22 @@ func (p *poolTracker) Claim(_ context.Context, key, team string, order []string)
 	return "In Progress", nil
 }
 
-// run executes a command (one level of a batch) and feeds its messages to the model.
+// run executes a command, feeds its message to the model, and does the same for the
+// claim that a launch carries (but not for other follow-ups, some of which wait).
 func run(m *Model, cmd tea.Cmd) {
 	if cmd == nil {
 		return
 	}
-	if b, ok := cmd().(tea.BatchMsg); ok {
+	msg := cmd()
+	if b, ok := msg.(tea.BatchMsg); ok {
 		for _, c := range b {
-			if c != nil {
-				m.Update(c())
-			}
+			run(m, c)
 		}
 		return
+	}
+	m.Update(msg)
+	if l, ok := msg.(launchedMsg); ok && l.err == nil {
+		run(m, l.claim)
 	}
 }
 

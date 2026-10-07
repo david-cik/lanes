@@ -83,8 +83,14 @@ func (m *Model) glyphOf(st agent.Status) string {
 }
 
 func (m *Model) header() string {
+	mine := 0
+	for _, i := range m.issues {
+		if !i.Pool {
+			mine++
+		}
+	}
 	left := []seg{s("▐", accentS), s("lanes", badgeS), s("▌", accentS), s("  "+m.label, bold),
-		s(fmt.Sprintf(" · %d tickets", len(m.issues)), faint)}
+		s(fmt.Sprintf(" · %d tickets", mine), faint)}
 	var work, idle int
 	agents := slices.Clone(m.agents)
 	m.overlay(agents) // hook status, as on the rows

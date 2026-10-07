@@ -27,7 +27,8 @@ type (
 	launchedMsg struct {
 		rec     state.Record
 		err     error
-		resumed string // ended session this resumed; its link is retired
+		resumed string  // ended session this resumed; its link is retired
+		claim   tea.Cmd // claims the ticket in Linear once the agent is running
 	}
 )
 
@@ -401,22 +402,22 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	setClaim()
 	start := func() (tea.Cmd, bool) {
 		m.say("starting "+p.Adapter.Name()+" on "+p.Ticket.Key+"…", nil)
-		run := func() tea.Msg {
+		var claimCmd tea.Cmd
+		if claim {
+			key := p.Ticket.Key
+			claimCmd = func() tea.Msg {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				state, err := claimer.Claim(ctx, key, team, order)
+				return claimedMsg{key: key, state: state, err: err}
+			}
+		}
+		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			rec, err := launch.Run(ctx, p, tm, store)
-			return launchedMsg{rec: rec, err: err}
-		}
-		if !claim {
-			return run, false
-		}
-		key := p.Ticket.Key
-		return tea.Batch(run, func() tea.Msg {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			state, err := claimer.Claim(ctx, key, team, order)
-			return claimedMsg{key: key, state: state, err: err}
-		}), false
+			return launchedMsg{rec: rec, err: err, claim: claimCmd}
+		}, false
 	}
 	acts := []action{
 		{"y", "start", start},
@@ -482,7 +483,7 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 	}
 	m.focus(msg.rec.ID, msg.rec.Pane)
 	m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)
-	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane))
+	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane), msg.claim) // claim only a ticket an agent started on
 }
 
 // --- send / stop / link ---
@@ -726,7 +727,7 @@ func (m *Model) confirmAdopt(p launch.Plan, name string) tea.Cmd {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
 				rec, err := launch.Run(ctx, p, tm, store)
-				return launchedMsg{rec, err, resumed}
+				return launchedMsg{rec: rec, err: err, resumed: resumed}
 			}
 		}}
 	return nil
