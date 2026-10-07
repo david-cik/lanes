@@ -157,8 +157,8 @@ flags:
 			return err
 		}
 		defer cleanup()
-		placeholder, err := tm.SplitRight(panel, 65, []string{"sh", "-c",
-			`printf '\n  Select an agent in lanes to show it here (click it, or move to it with j/k).\n'; exec cat >/dev/null`})
+		placeholder, err := tm.SplitRight(panel, 65, []string{"sh", "-c", placeholderScript, "sh",
+			keyLabel(tm.GlobalOpt("prefix")) + " h / l"})
 		if err != nil {
 			return err
 		}
@@ -310,6 +310,13 @@ func hooksCommand(uninstall bool, args []string) error {
 	}
 	return install.Run(*path, bin, uninstall, *yes, os.Stdin, os.Stdout)
 }
+
+// placeholderScript draws the empty right pane: the lanes mark and how to fill it.
+// $1 is the pane keys, passed as an argument so no shell parses it.
+const placeholderScript = `printf '\n\n\033[1;94m    ╻  ┏━┓┏┓╻┏━╸┏━┓\n    ┃  ┣━┫┃┗┫┣╸ ┗━┓\n    ┗━╸╹ ╹╹ ╹┗━╸┗━┛\033[0m\n\n'
+printf '\033[2m    select an agent to show it here: click it, or move to it with j / k\n'
+printf '    %s  or a click: board ⇄ agent\033[0m\n' "$1"
+exec cat >/dev/null`
 
 // setupFocus makes moving between the board and the agent pane easy in the session the
 // panel runs in: mouse support on, and one key (focus_key) that jumps between them,

@@ -147,7 +147,7 @@ func TestExternalAgentCannotBeFocusedButCanBeLinked(t *testing.T) {
 	if links, _ := m.opt.Store.Links(); links["claude:x9"] != state.NoTicket {
 		t.Fatalf("removal not remembered: %v", links)
 	}
-	if v := view(m); strings.Index(v, "Unlinked") < 0 || strings.Index(v, "outside") < strings.Index(v, "Unlinked") {
+	if v := view(m); strings.Index(v, "UNLINKED") < 0 || strings.Index(v, "outside") < strings.Index(v, "UNLINKED") {
 		t.Fatalf("session not under Unlinked:\n%s", view(m))
 	}
 }
@@ -389,7 +389,7 @@ func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
 		t.Fatalf("removed agent is called %q in messages", who)
 	}
 	v := view(m)
-	if i, j := strings.Index(v, "Unlinked"), strings.Index(v, " one  "); i < 0 || j < i {
+	if i, j := strings.Index(v, "UNLINKED"), strings.Index(v, " one  "); i < 0 || j < i {
 		t.Fatalf("launched agent not moved to Unlinked:\n%s", v)
 	}
 	// and onto another ticket

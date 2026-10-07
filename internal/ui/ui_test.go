@@ -47,7 +47,10 @@ func TestAgentsNestUnderTicket(t *testing.T) {
 			Since: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
 	}})
 	v := view(m)
-	ticket, ag := strings.Index(v, "ABC-1 fix it"), strings.Index(v, "└ ● impl  working 1h · abc-1-fix-it  external")
+	ticket, ag := strings.Index(v, "ABC-1 fix it"), strings.Index(v, "impl")
+	if !rowHas(v, "└─", "impl", "working", "1h", "abc-1-fix-it", "external") {
+		t.Fatalf("agent row:\n%s", v)
+	}
 	if ticket < 0 || ag < ticket {
 		t.Fatalf("agent not under ticket:\n%s", v)
 	}
@@ -150,7 +153,26 @@ func TestAgentNameDropsRepeatedTicketKey(t *testing.T) {
 		{Tool: "claude", Name: "ABC-1", Branch: "abc-1-y", Status: agent.Idle},
 	}})
 	v := view(m)
-	if !strings.Contains(v, "○ fix-the-thing  idle") || !strings.Contains(v, "○ agent  idle") || strings.Contains(v, "○ ABC-1") {
+	if !rowHas(v, "○ fix-the-thing", "idle") || !rowHas(v, "○ agent", "idle") || strings.Contains(v, "○ ABC-1") {
 		t.Fatalf("view:\n%s", v)
 	}
+}
+
+// rowHas reports whether one line of the view contains all parts, in order.
+func rowHas(v string, parts ...string) bool {
+	for _, l := range strings.Split(v, "\n") {
+		rest, ok := l, true
+		for _, p := range parts {
+			i := strings.Index(rest, p)
+			if i < 0 {
+				ok = false
+				break
+			}
+			rest = rest[i+len(p):]
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
 }

@@ -59,7 +59,7 @@ func TestWheelMovesAndFooterClickPresses(t *testing.T) {
 		t.Fatalf("cursor %d", m.cursor)
 	}
 	footer := strings.Split(view(m), "\n")[m.height-1]
-	x := strings.Index(footer, "? keys")
+	x := strings.Index(footer, "⟨?⟩ keys")
 	if x < 0 {
 		t.Fatalf("footer %q", footer)
 	}

@@ -100,6 +100,9 @@ type Model struct {
 	rows    []board.Row
 	cursor  int
 	offset  int
+	spin    int    // spinner frame for working agents
+	spinOn  bool   // a spinner tick is scheduled
+	light   bool   // the terminal has a light background
 	filter  string // board rows narrowed to those matching it (/)
 	typing  bool   // the filter is being typed
 	width   int
@@ -159,7 +162,8 @@ func New(opt Options) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.fetchAgents(), tick(m.opt.LinearPoll, issuesTick{}), tick(m.opt.ExternalPoll, agentsTick{}), m.waitHook())
+	return tea.Batch(m.fetchAgents(), tick(m.opt.LinearPoll, issuesTick{}), tick(m.opt.ExternalPoll, agentsTick{}), m.waitHook(),
+		tea.RequestBackgroundColor)
 }
 
 func tick(d time.Duration, msg tea.Msg) tea.Cmd {
@@ -230,8 +234,38 @@ func (m *Model) say(text string, err error) {
 	}
 }
 
+type spinTick struct{}
+
+// Update handles a message, then keeps the spinner turning while any agent works.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	mm, cmd := m.update(msg)
+	if !m.spinOn && m.working() > 0 {
+		m.spinOn = true
+		cmd = tea.Batch(cmd, tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return spinTick{} }))
+	}
+	return mm, cmd
+}
+
+// working counts running agents that are working, hook status included.
+func (m *Model) working() int {
+	agents := slices.Clone(m.agents)
+	m.overlay(agents)
+	n := 0
+	for _, a := range agents {
+		if a.Status == agent.Working && !a.Ended {
+			n++
+		}
+	}
+	return n
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinTick:
+		m.spin++
+		m.spinOn = false
+	case tea.BackgroundColorMsg:
+		m.light = !msg.IsDark()
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case issuesTick:
@@ -506,7 +540,7 @@ func (m *Model) viewBoard(b *strings.Builder, body int) {
 	for i := m.offset; i < end; i++ {
 		parts := m.rowSegs(i, stats[i])
 		if i == m.cursor {
-			b.WriteString(sel.Render(plainLine(m.width, parts...)) + "\n")
+			b.WriteString(m.selectedLine(parts) + "\n")
 		} else {
 			b.WriteString(line(m.width, parts...) + "\n")
 		}
