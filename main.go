@@ -395,10 +395,16 @@ func bindPaneKeys(tm tmux.Client, session string, undo *[]func()) bool {
 // moves the session to the background. Elsewhere it still sends the prefix.
 func guardPrefix(tm tmux.Client, session, panel string, undo *[]func()) bool {
 	key := tm.GlobalOpt("prefix")
-	if key == "" || key == "h" || key == "l" {
+	if key == "" || key == "None" || key == "h" || key == "l" {
 		return false
 	}
-	return borrowPrefix(tm, key, "send-prefix", session, tmux.Toggle(panel), undo)
+	// tmux binds only its default prefix (C-b) to send-prefix; another prefix has that
+	// binding only if the user added it, and is restored to what it had.
+	stock, cur := "", tm.PrefixBinding(key)
+	if tmux.BoundCommand(cur) == "send-prefix" || (strings.Contains(cur, "#{==:#{session_name},") && strings.HasSuffix(cur, " send-prefix")) {
+		stock = "send-prefix"
+	}
+	return borrowPrefix(tm, key, stock, session, tmux.Toggle(panel), undo)
 }
 
 // borrowPrefix binds prefix+key to action in the lanes session, keeping stock (tmux's
