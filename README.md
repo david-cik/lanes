@@ -111,8 +111,9 @@ the one you're in: `● board` / `○ agent · <its title>`. `prefix z` zooms th
 While it runs, lanes turns the mouse on for its tmux session and borrows those keys
 there only: elsewhere they keep tmux's defaults (the prefix pressed twice still sends the
 prefix), keys you've bound yourself are left alone, and everything is put back when lanes
-quits. Inside lanes the prefix pressed twice never reaches the agent — for Claude, `Ctrl-b`
-would move the session to the background and leave a copy of it on the board.
+quits. So inside lanes the prefix pressed twice doesn't reach the agent (unless you've
+bound it yourself) — for Claude, `Ctrl-b` would move the session to the background and
+leave a copy of it on the board.
 
 Prefer one key? Set `focus_key` (a tmux key name such as `"C-]"` or `"F12"`): it jumps
 between board and agent inside the lanes session only, passes through everywhere else,
