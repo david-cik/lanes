@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/david-cik/lanes/internal/agent"
@@ -109,9 +111,38 @@ func TestAutoLinkOnlyConfident(t *testing.T) {
 	if links["claude:s1"] != "ABC-1" || links["claude:s2"] != "" {
 		t.Fatalf("links %v", links)
 	}
-	if cmd := m.autoLink(); cmd != nil { // already scored: no rescans
+	if cmd := m.autoLink(); cmd != nil { // within a minute: no rescans
 		if b, ok := cmd().(tea.BatchMsg); ok && len(b) > 0 {
-			t.Fatal("rescanned sessions")
+			t.Fatal("rescanned too soon")
 		}
+	}
+	// a minute later the mixed session has become clearly about ABC-2
+	transcript(t, os.Getenv("CLAUDE_CONFIG_DIR"), "/w/b", "s2", map[string]int{"ABC-1": 2, "ABC-2": 20})
+	base := m.now()
+	m.now = func() time.Time { return base.Add(2 * time.Minute) }
+	runCmd2(m.autoLink())
+	if links, _ := m.opt.Store.Links(); links["claude:s2"] != "ABC-2" {
+		t.Fatalf("grown transcript not re-scored: %v", links)
+	}
+}
+
+func TestAutoLinkRespectsUnlinkAndOtherAssignee(t *testing.T) {
+	m := suggestModel(t)
+	m.opt.Config.AutoLink = true
+	m.links["claude:s1"] = "" // the user unlinked it on purpose
+	if cmd := m.autoLink(); cmd != nil {
+		if b, ok := cmd().(tea.BatchMsg); ok {
+			for _, c := range b {
+				m.Update(c())
+			}
+		}
+	}
+	if m.links["claude:s1"] != "" {
+		t.Fatal("re-linked a session the user unlinked")
+	}
+	m.links = map[string]string{}
+	m.opt.Assignee = "someone-else"
+	if cmd := m.autoLink(); cmd != nil {
+		t.Fatal("auto_link ran while viewing another person's tickets")
 	}
 }

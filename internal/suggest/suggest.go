@@ -85,6 +85,7 @@ func File(path string, open map[string]bool) (Result, error) {
 
 type entry struct {
 	Type    string `json:"type"`
+	IsMeta  bool   `json:"isMeta"` // text Claude injected (skills, reminders), not typed
 	Message struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
@@ -94,6 +95,17 @@ type piece struct {
 	Type  string          `json:"type"`
 	Text  string          `json:"text"`
 	Input json.RawMessage `json:"input"`
+}
+
+// injected recognises text Claude adds to the user's side of the conversation.
+func injected(s string) bool {
+	s = strings.TrimSpace(s)
+	for _, p := range []string{"<system-reminder>", "<task-notification>", "<local-command", "<command-"} {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // Score reads JSONL transcript lines and ranks the open ticket keys they mention.
@@ -113,6 +125,9 @@ func Score(r io.Reader, open map[string]bool) Result {
 			continue
 		}
 		add := func(s string, w float64, typed bool) {
+			if typed && (e.IsMeta || injected(s)) { // shown as user text, but not from the user
+				w, typed = weightText, false
+			}
 			for _, m := range keyRe.FindAllStringSubmatch(s, -1) {
 				k := strings.ToUpper(m[1]) + "-" + m[2]
 				if open[k] {

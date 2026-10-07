@@ -366,7 +366,7 @@ func (m *Model) linkSelected() tea.Cmd {
 	}
 	key := state.LinkKey(a.Tool, a.ID)
 	var items []choice
-	if _, linked := m.links[key]; linked {
+	if m.links[key] != "" {
 		items = append(items, choice{"(unlink — go back to matching by branch/name)", ""})
 	}
 	for _, i := range m.issues {
@@ -376,7 +376,7 @@ func (m *Model) linkSelected() tea.Cmd {
 	m.modal = &modal{title: "Link " + name + " to which ticket?", items: items,
 		onChoose: func(c choice) tea.Cmd {
 			if c.value == "" {
-				delete(m.links, key)
+				m.links[key] = "" // unlinked on purpose: auto_link leaves it alone from now on
 			} else {
 				m.links[key] = c.value
 			}

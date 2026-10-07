@@ -91,3 +91,28 @@ func TestTranscriptPath(t *testing.T) {
 		t.Fatalf("missing got %q", got)
 	}
 }
+
+func TestInjectedTextIsNotTyped(t *testing.T) {
+	transcript := strings.Join([]string{
+		`{"type":"user","isMeta":true,"message":{"content":"skill text about ABC-1 ABC-1 ABC-1"}}`,
+		line("user", `"<task-notification>agent finished ABC-1</task-notification>"`),
+		line("user", `[{"type":"text","text":"<system-reminder>ABC-1</system-reminder>"}]`),
+		line("user", `"please do ABC-2"`),
+	}, "\n")
+	r := Score(strings.NewReader(transcript), open)
+	var a1, a2 Candidate
+	for _, c := range r {
+		switch c.Key {
+		case "ABC-1":
+			a1 = c
+		case "ABC-2":
+			a2 = c
+		}
+	}
+	if a1.Typed != 0 || a1.Mentions != 5 || a2.Typed != 1 {
+		t.Fatalf("ABC-1 %+v ABC-2 %+v", a1, a2)
+	}
+	if a1.Score >= 5*weightTyped { // 5 injected mentions must not outweigh like typed ones
+		t.Fatalf("injected mentions weighted as typed: %+v", a1)
+	}
+}

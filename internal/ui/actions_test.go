@@ -135,8 +135,10 @@ func TestExternalAgentCannotBeFocusedButCanBeLinked(t *testing.T) {
 	m.cursorTo(t, "outside")
 	m.Update(key("l"))
 	m.Update(key("enter")) // "(unlink …)" is first now
-	if links, _ := m.opt.Store.Links(); len(links) != 0 {
+	if links, _ := m.opt.Store.Links(); links["claude:x9"] != "" {
 		t.Fatalf("still linked: %v", links)
+	} else if _, kept := links["claude:x9"]; !kept {
+		t.Fatal("unlink not remembered (auto_link would relink it)")
 	}
 }
 

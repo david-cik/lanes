@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -30,11 +31,24 @@ type (
 	suggestMsg  review
 	autoLinkMsg struct {
 		tool, id, name string
+		size           int64 // transcript size scored; 0 = none found
 		res            suggest.Result
+		unchanged      bool // transcript hasn't grown since the last look: not re-read
 	}
 )
 
+// autoRescan is how often auto_link looks again at a session it couldn't link yet
+// (it re-reads only if the transcript grew).
+const autoRescan = time.Minute
+
+type autoSeen struct {
+	at   time.Time
+	size int64
+}
+
 // unlinkedClaude lists sessions lanes didn't start that aren't on any open ticket.
+// A manual link of "" means the user unlinked the session on purpose: it's offered by L
+// but never auto-linked again.
 func (m *Model) unlinkedClaude() []agent.Agent {
 	open := m.openKeys()
 	var out []agent.Agent
@@ -178,29 +192,51 @@ func (m *Model) issueTitle(key string) string {
 	return ""
 }
 
-// autoLink scores unlinked Claude sessions it hasn't looked at yet (auto_link = true)
-// and links the ones whose transcript clearly points at one open ticket.
+// autoLink (auto_link = true) looks at unlinked Claude sessions at most once a minute
+// each, re-reading a transcript only when it has grown, and links those that clearly
+// point at one open ticket. It only runs while you view your own tickets.
 func (m *Model) autoLink() tea.Cmd {
-	if !m.opt.Config.AutoLink || len(m.issues) == 0 {
+	if !m.opt.Config.AutoLink || len(m.issues) == 0 || m.opt.Assignee != m.opt.Config.Assignee {
 		return nil
 	}
-	open := m.openKeys()
+	open, now := m.openKeys(), m.now()
 	var cmds []tea.Cmd
 	for _, a := range m.unlinkedClaude() {
 		k := state.LinkKey(a.Tool, a.ID)
-		if m.autoChecked[k] {
+		if _, declined := m.links[k]; declined {
 			continue
 		}
-		m.autoChecked[k] = true
-		a := a
-		cmds = append(cmds, func() tea.Msg { return autoLinkMsg{a.Tool, a.ID, a.Name, scoreSession(a, open)} })
+		seen, ok := m.autoChecked[k]
+		if ok && now.Sub(seen.at) < autoRescan {
+			continue
+		}
+		m.autoChecked[k] = autoSeen{now, seen.size}
+		a, prev := a, seen.size
+		cmds = append(cmds, func() tea.Msg {
+			p := suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), a.Cwd, a.ID)
+			fi, err := os.Stat(p)
+			if p == "" || err != nil {
+				return autoLinkMsg{tool: a.Tool, id: a.ID, name: a.Name}
+			}
+			if fi.Size() == prev {
+				return autoLinkMsg{tool: a.Tool, id: a.ID, name: a.Name, size: prev, unchanged: true}
+			}
+			r, _ := suggest.File(p, open)
+			return autoLinkMsg{a.Tool, a.ID, a.Name, fi.Size(), r, false}
+		})
 	}
 	return tea.Batch(cmds...)
 }
 
 func (m *Model) gotAutoLink(msg autoLinkMsg) {
 	k := state.LinkKey(msg.tool, msg.id)
-	if !msg.res.Confident() || m.links[k] != "" {
+	if seen, ok := m.autoChecked[k]; ok {
+		m.autoChecked[k] = autoSeen{seen.at, msg.size}
+	}
+	if msg.unchanged || !msg.res.Confident() {
+		return
+	}
+	if _, set := m.links[k]; set { // linked, or unlinked on purpose, meanwhile
 		return
 	}
 	m.links[k] = msg.res[0].Key

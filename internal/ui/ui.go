@@ -120,8 +120,8 @@ type Model struct {
 	prCache      map[string]cachedPR  // by directory + "\x00" + branch
 	issueDetails map[string]cachedIssue
 
-	review      *review         // suggested-links screen, when open
-	autoChecked map[string]bool // sessions auto_link has already scored
+	review      *review             // suggested-links screen, when open
+	autoChecked map[string]autoSeen // when auto_link last looked at a session
 	modal       *modal
 
 	now func() time.Time
@@ -131,7 +131,7 @@ func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
 		stopping: map[string]bool{}, hooks: map[string]*hookState{},
 		readers: opt.Readers, gitCache: map[string]cachedGit{}, prCache: map[string]cachedPR{},
-		issueDetails: map[string]cachedIssue{}, autoChecked: map[string]bool{}}
+		issueDetails: map[string]cachedIssue{}, autoChecked: map[string]autoSeen{}}
 	if m.readers.Git == nil {
 		m.readers = defaultReaders()
 	}
