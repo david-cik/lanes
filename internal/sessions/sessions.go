@@ -63,6 +63,7 @@ func List(running []agent.Agent, days int, store state.Store) []Session {
 		if seen[id] {
 			return
 		}
+		seen[id] = true // also for skipped ones, so the running list below doesn't add them back
 		in, err := suggest.SessionInfo(path)
 		if err != nil || (!alive[id] && in.When.Before(cutoff)) {
 			return
@@ -72,7 +73,6 @@ func List(running []agent.Agent, days int, store state.Store) []Session {
 		if strings.HasPrefix(in.Entrypoint, "sdk") {
 			return
 		}
-		seen[id] = true
 		s := Session{ID: id, Title: in.Title, Cwd: in.Cwd, When: in.When, Running: alive[id], First: in.First}
 		if t, ok := recTicket[id]; ok {
 			s.Ticket = t
