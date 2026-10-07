@@ -65,7 +65,7 @@ Ticket {key}: {title}
 
 func Default() Config {
 	return Config{
-		LinearPoll:       Duration{60 * time.Second},
+		LinearPoll:       Duration{30 * time.Second},
 		ExternalPoll:     Duration{5 * time.Second},
 		Assignee:         "me",
 		RepoRoots:        []string{"~/src", "~/git"},

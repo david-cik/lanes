@@ -182,7 +182,7 @@ optional.
 
 ```toml
 assignee      = "me"          # whose tickets: "me", a user id, name, or email
-linear_poll   = "60s"         # how often tickets refresh (min 1s)
+linear_poll   = "30s"         # how often tickets refresh (min 1s)
 external_poll = "5s"          # how often agent sessions refresh (min 1s)
 repo_roots    = ["~/src", "~/git"]   # where to look for repositories
 launch_dir    = ""            # start new agents in this folder as it is (e.g. "~/git"); "" = a worktree per ticket
