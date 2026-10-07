@@ -315,6 +315,10 @@ func hooksCommand(uninstall bool, args []string) error {
 	return install.Run(*path, bin, uninstall, *yes, os.Stdin, os.Stdout)
 }
 
+// paneTitle is the line over each pane in the lanes window: the active one is bold
+// with a filled dot, and an agent's shows its title.
+const paneTitle = " #{?pane_active,#[bold]● ,#[dim]○ }#{?@lanes_panel,board,agent#{?@lanes_agent, · #{=/60/…:pane_title},}}#[default] "
+
 // placeholderScript draws the empty right pane: the lanes mark and how to fill it.
 // $1 is the pane keys, passed as an argument so no shell parses it.
 const placeholderScript = `printf '\n\n\033[1;94m    ╻  ┏━┓┏┓╻┏━╸┏━┓\n    ┃  ┣━┫┃┗┫┣╸ ┗━┓\n    ┗━╸╹ ╹╹ ╹┗━╸┗━┛\033[0m\n\n'
@@ -347,6 +351,23 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, double
 		})
 	}
 	setOpt("mouse", "on")
+	// A thin title over each pane marks the one you're in: ● board / ○ agent.
+	setWinOpt := func(name, val string) {
+		prev, set := tm.WindowOpt(panel, name)
+		if tm.SetWindowOpt(panel, name, val) != nil {
+			return
+		}
+		undo = append(undo, func() {
+			if set {
+				tm.SetWindowOpt(panel, name, prev)
+			} else {
+				tm.UnsetWindowOpt(panel, name)
+			}
+		})
+	}
+	setWinOpt("pane-border-status", "top")
+	setWinOpt("pane-border-indicators", "arrows")
+	setWinOpt("pane-border-format", paneTitle)
 	if session, err := tm.SessionOf(panel); err == nil {
 		double = guardPrefix(tm, session, panel, &undo)
 	}

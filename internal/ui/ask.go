@@ -44,7 +44,7 @@ type askTurn struct {
 	Answered string `json:"you_answered"`
 }
 
-// ask is "/": describe the session and the ticket in your own words; Claude proposes
+// ask is ":": describe the session and the ticket in your own words; Claude proposes
 // the link and you confirm it.
 func (m *Model) ask() tea.Cmd {
 	m.modal = &modal{input: true, title: "Ask Claude — e.g. \"attach my CSP rollout session to ABC-12\"",

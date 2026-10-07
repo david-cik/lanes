@@ -168,6 +168,26 @@ func (c Client) UnsetSessionOpt(pane, key string) error {
 	return err
 }
 
+// WindowOpt returns a window option's value and whether it is set on pane's window
+// (rather than inherited from the global value).
+func (c Client) WindowOpt(pane, key string) (string, bool) {
+	if out, err := c.run("show-options", "-w", "-t", pane, key); err != nil || out == "" {
+		return "", false
+	}
+	v, _ := c.run("show-options", "-wv", "-t", pane, key)
+	return v, true
+}
+
+func (c Client) SetWindowOpt(pane, key, val string) error {
+	_, err := c.run("set-option", "-w", "-t", pane, key, val)
+	return err
+}
+
+func (c Client) UnsetWindowOpt(pane, key string) error {
+	_, err := c.run("set-option", "-wu", "-t", pane, key)
+	return err
+}
+
 // GlobalOpt returns a global (server-wide) option's value, e.g. "prefix".
 func (c Client) GlobalOpt(key string) string {
 	v, _ := c.run("show-options", "-gv", key)

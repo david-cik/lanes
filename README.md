@@ -84,7 +84,7 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `x` | stop the selected agent (its worktree and branch are kept) |
 | `t` | move a session to another ticket, or take it off its ticket (saved; matching by branch, `T` and `auto_link` won't put it back; an ended session that's taken off disappears from the board) |
 | `T` | suggest tickets: read unlinked Claude sessions' transcripts and propose a ticket for each |
-| `:` | ask Claude in plain words, e.g. "attach my CSP session to ABC-12" — it proposes the link, you confirm |
+| `:` | ask Claude in plain words, e.g. "attach my CSP session to ABC-12" — it proposes the link, you confirm; if it asks back, you answer and it carries on |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |
 | `u` | show another person's tickets |
@@ -97,7 +97,8 @@ to it, scroll to move, click a key in the footer to press it, click a choice in 
 
 **Move between the board and the agent pane with your tmux prefix and `h` / `l`**, as in
 herdr (`Ctrl-b h` / `Ctrl-b l` by default; the arrows work too), **or click either one** —
-lanes turns the mouse on for its tmux session while it runs. `prefix z` zooms the agent
+lanes turns the mouse on for its tmux session while it runs, and puts a thin title over
+each pane: `●` marks the one you're in (`● board` / `○ agent · <its title>`). `prefix z` zooms the agent
 pane. The `h` / `l` bindings act only in the lanes session (elsewhere they keep tmux's
 defaults), are removed when lanes quits, and aren't added if you've bound those keys
 yourself. Inside an agent, don't press `Ctrl-b` twice: that sends `Ctrl-b` to Claude,

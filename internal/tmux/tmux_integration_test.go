@@ -223,3 +223,22 @@ func TestDoublePrefixToggleRestores(t *testing.T) {
 		t.Fatalf("restored %q", c.PrefixBinding("C-b"))
 	}
 }
+
+func TestWindowOptionsRoundTrip(t *testing.T) {
+	c := server(t)
+	p, err := c.NewSession("lanes", t.TempDir(), nil, sleeper("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, set := c.WindowOpt(p, "pane-border-status"); set {
+		t.Fatal("set on a new window")
+	}
+	c.SetWindowOpt(p, "pane-border-status", "top")
+	if v, set := c.WindowOpt(p, "pane-border-status"); !set || v != "top" {
+		t.Fatalf("got %q %v", v, set)
+	}
+	c.UnsetWindowOpt(p, "pane-border-status")
+	if _, set := c.WindowOpt(p, "pane-border-status"); set {
+		t.Fatal("unset failed")
+	}
+}
