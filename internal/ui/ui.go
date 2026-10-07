@@ -208,6 +208,7 @@ func (m *Model) fetchAgents() tea.Cmd {
 	seq := m.agentSeq
 	store := m.opt.Store
 	fallback := maps.Clone(m.links)
+	endedFor := time.Duration(m.opt.Config.EndedDays) * 24 * time.Hour
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -217,7 +218,7 @@ func (m *Model) fetchAgents() tea.Cmd {
 		}
 		a, live, err := f.Snapshot(ctx)
 		if err == nil || len(a) > 0 {
-			a = append(a, endedSessions(links, a)...)
+			a = append(a, endedSessions(links, a, endedFor)...)
 		}
 		return agentsMsg{seq: seq, agents: a, live: live, err: err, links: links}
 	}

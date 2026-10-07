@@ -147,11 +147,15 @@ func TestAutoLinkRespectsUnlinkAndOtherAssignee(t *testing.T) {
 	}
 }
 
-func endedTranscript(t *testing.T, cfg, sid, cwd, title string) {
+func endedTranscript(t *testing.T, cfg, sid, cwd, title string, entrypoint ...string) {
 	t.Helper()
 	dir := filepath.Join(cfg, "projects", "somewhere")
 	os.MkdirAll(dir, 0o700)
-	body := fmt.Sprintf(`{"type":"user","cwd":%q,"message":{"content":"hi"}}`+"\n"+`{"type":"ai-title","aiTitle":%q}`+"\n", cwd, title)
+	ep := "cli"
+	if len(entrypoint) > 0 {
+		ep = entrypoint[0]
+	}
+	body := fmt.Sprintf(`{"type":"user","cwd":%q,"entrypoint":%q,"message":{"content":"hi"}}`+"\n"+`{"type":"ai-title","aiTitle":%q}`+"\n", cwd, ep, title)
 	os.WriteFile(filepath.Join(dir, sid+".jsonl"), []byte(body), 0o600)
 }
 
@@ -159,8 +163,9 @@ func TestEndedLinkedSessionsShowAndResume(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
 	endedTranscript(t, cfg, "dead1", t.TempDir(), "Fix the login redirect")
-	ended := endedSessions(map[string]string{"claude:dead1": "ABC-1", "claude:alive": "ABC-1", "claude:nolog": "ABC-1", "claude:off": ""},
-		[]agent.Agent{{ID: "alive", Tool: "claude"}})
+	endedTranscript(t, cfg, "plugin", t.TempDir(), "", "sdk-cli")
+	ended := endedSessions(map[string]string{"claude:dead1": "ABC-1", "claude:alive": "ABC-1", "claude:nolog": "ABC-1", "claude:off": "", "claude:plugin": "ABC-1"},
+		[]agent.Agent{{ID: "alive", Tool: "claude"}}, 3*24*time.Hour)
 	if len(ended) != 1 || ended[0].Name != "Fix the login redirect" || !ended[0].Ended || ended[0].TicketKey != "ABC-1" {
 		t.Fatalf("ended %+v", ended)
 	}

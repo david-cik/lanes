@@ -253,12 +253,10 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 	m.say(fmt.Sprintf("auto-linked %s → %s (t changes it)", msg.name, msg.res[0].Key), err)
 }
 
-// endedMax hides ended sessions whose transcript hasn't changed in this long.
-const endedMax = 14 * 24 * time.Hour
-
 // endedSessions turns links to Claude sessions that are no longer running into board
-// rows, so you can still find and resume them. Runs off the UI loop (reads transcripts).
-func endedSessions(links state.Links, running []agent.Agent) []agent.Agent {
+// rows, so you can still find and resume them, until their transcript is older than
+// max. Runs off the UI loop (reads transcripts).
+func endedSessions(links state.Links, running []agent.Agent, max time.Duration) []agent.Agent {
 	alive := map[string]bool{}
 	for _, a := range running {
 		alive[state.LinkKey(a.Tool, a.ID)] = true
@@ -274,8 +272,8 @@ func endedSessions(links state.Links, running []agent.Agent) []agent.Agent {
 			continue
 		}
 		in, err := suggest.SessionInfo(p)
-		if err != nil || in.Cwd == "" || time.Since(in.When) > endedMax {
-			continue
+		if err != nil || in.Cwd == "" || time.Since(in.When) > max || strings.HasPrefix(in.Entrypoint, "sdk") {
+			continue // gone, too old, or run by a tool or plugin rather than a person
 		}
 		name := in.Title
 		if name == "" {

@@ -16,7 +16,8 @@ func TestListExternal(t *testing.T) {
 		 {"pid":1,"cwd":"/src/app","kind":"interactive","startedAt":1767225600000,"sessionId":"s1","name":"abc-12 work","status":"busy"},
 		 {"pid":2,"cwd":"/src","kind":"background","startedAt":1767225600000,"sessionId":"s2","name":"bg","status":"idle","id":"x1","state":"working"},
 		 {"pid":3,"cwd":"/src","kind":"interactive","startedAt":0,"sessionId":"s3","name":"odd","status":"weird"},
-		 {"pid":4,"cwd":"/src","kind":"interactive","startedAt":0,"sessionId":"s4","name":"ask","status":"waiting"}]`), nil
+		 {"pid":4,"cwd":"/src","kind":"interactive","startedAt":0,"sessionId":"s4","name":"ask","status":"waiting"},
+		 {"pid":5,"cwd":"/src","kind":"sdk","startedAt":0,"sessionId":"s5","name":"plugin","status":"busy"}]`), nil
 	}}
 	got, err := a.List(context.Background())
 	if err != nil {

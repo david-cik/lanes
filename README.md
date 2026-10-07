@@ -161,11 +161,14 @@ Claude's own prompt stays on screen the whole time, so you can always answer the
 ticket it mentions most — counting what you typed above commands, and those above the
 agent's own text, and recent mentions above old ones. Clear matches come pre-checked;
 mixed ones show the alternatives. Nothing is linked until you press enter, and `t`
-changes or removes any link. With `auto_link = true`, new sessions with one clearly
-dominant ticket are linked automatically.
+changes or removes any link. With `auto_link = true`, new sessions that are clearly about
+one ticket are linked automatically — it has to outweigh the runner-up twice over and make
+up at least half of all ticket mentions, so a session that went over many tickets (a
+review, a planning pass) is left alone. Sessions run by tools and plugins (Agent SDK,
+`claude -p`) never show up.
 
 Linked sessions that have ended (closed terminal, killed process) stay on the board under
-their ticket for 14 days, marked "ended". `enter` or `A` resumes one in a lanes pane with
+their ticket for 3 days (`ended_days`), marked "ended". `enter` or `A` resumes one in a lanes pane with
 its conversation intact, so lanes controls it from then on.
 
 By default, sessions you start yourself show up read-only with polled status. To give
@@ -203,6 +206,7 @@ branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
 auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
+ended_days = 3                # how long ended sessions stay under their ticket (0 = not at all)
 focus_key = ""                # optional single key that jumps board ⇄ agent, e.g. "C-]", "F12" ("" = prefix + h/l)
 
 # The first prompt an agent gets. Placeholders: {key} {key_lower} {slug} {title} {url}

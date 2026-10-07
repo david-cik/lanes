@@ -39,6 +39,7 @@ func TestConfident(t *testing.T) {
 		{Result{{Key: "A", Score: 50, Mentions: 5}}, true},
 		{Result{{Key: "A", Score: 50, Mentions: 9}, {Key: "B", Score: 25, Mentions: 9}}, true},
 		{Result{{Key: "A", Score: 50, Mentions: 9}, {Key: "B", Score: 26, Mentions: 9}}, false},
+		{Result{{Key: "A", Score: 50, Mentions: 9}, {Key: "B", Score: 20}, {Key: "C", Score: 20}, {Key: "D", Score: 20}}, false}, // a review of many tickets
 	}
 	for i, c := range cases {
 		if c.r.Confident() != c.want {

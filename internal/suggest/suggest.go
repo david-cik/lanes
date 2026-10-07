@@ -45,7 +45,13 @@ func (r Result) Confident() bool {
 	if len(r) == 0 || r[0].Mentions < 5 {
 		return false
 	}
-	return len(r) == 1 || r[0].Score >= 2*r[1].Score
+	total := 0.0
+	for _, c := range r {
+		total += c.Score
+	}
+	// Twice the runner-up, and at least half of everything: a session that went over
+	// many tickets (a review, a planning pass) isn't about the one it named most.
+	return (len(r) == 1 || r[0].Score >= 2*r[1].Score) && 2*r[0].Score >= total
 }
 
 // TranscriptPath finds Claude's transcript for a session in dir, or "".

@@ -37,9 +37,10 @@ type Config struct {
 	WorktreeTemplate string   `toml:"worktree_template"`
 	PromptTemplate   string   `toml:"prompt_template"`
 	Preamble         string   `toml:"preamble"`
-	NotifyOS         bool     `toml:"notify_os"` // also send desktop notifications
-	AutoLink         bool     `toml:"auto_link"` // link new sessions whose transcript clearly points at one ticket
-	FocusKey         string   `toml:"focus_key"` // optional tmux key that jumps between board and agent ("" = use the tmux prefix + h/l or arrows)
+	NotifyOS         bool     `toml:"notify_os"`  // also send desktop notifications
+	AutoLink         bool     `toml:"auto_link"`  // link new sessions whose transcript clearly points at one ticket
+	EndedDays        int      `toml:"ended_days"` // how long ended sessions stay under their ticket (0 = not at all)
+	FocusKey         string   `toml:"focus_key"`  // optional tmux key that jumps between board and agent ("" = use the tmux prefix + h/l or arrows)
 
 	Agents map[string]AgentConfig `toml:"agents"`
 	Teams  map[string]TeamConfig  `toml:"teams"`
@@ -73,6 +74,7 @@ func Default() Config {
 		BranchTemplate:   "{key_lower}/{slug}",
 		WorktreeTemplate: "{repo}/.worktrees/{branch}",
 		PromptTemplate:   DefaultPrompt,
+		EndedDays:        3,
 	}
 }
 

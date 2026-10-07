@@ -39,6 +39,7 @@ func (a *Adapter) List(ctx context.Context) ([]agent.Agent, error) {
 	}
 	var recs []struct {
 		SessionID string `json:"sessionId"`
+		Kind      string `json:"kind"`
 		Name      string `json:"name"`
 		Cwd       string `json:"cwd"`
 		Status    string `json:"status"`
@@ -49,6 +50,9 @@ func (a *Adapter) List(ctx context.Context) ([]agent.Agent, error) {
 	}
 	out := make([]agent.Agent, 0, len(recs))
 	for _, r := range recs {
+		if r.Kind != "" && r.Kind != "interactive" && r.Kind != "background" {
+			continue // run by a tool or plugin (Agent SDK, claude -p), not a person's session
+		}
 		out = append(out, agent.Agent{
 			ID: r.SessionID, Tool: "claude", Name: r.Name, Cwd: r.Cwd,
 			Status: status(r.Status), Since: time.UnixMilli(r.StartedAt), External: true,
