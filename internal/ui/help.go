@@ -60,7 +60,7 @@ var helpLines = []string{
 	"  u          show someone else's tickets  ·  r  refresh  ·  q  quit",
 	"",
 	"Panes",
-	"  {focus} or click   jump between the board and the agent  ·  {prefix} z  zoom the agent",
+	"{panes}",
 	"",
 	"Approving (a)",
 	"  y once · s this session · A always (this repo) · e edit rule · tab other rule",
@@ -70,17 +70,8 @@ var helpLines = []string{
 func (m *Model) showHelp() {
 	var lines []string
 	for _, l := range helpLines {
-		if strings.Contains(l, "{focus}") {
-			if m.opt.FocusLabel == "" {
-				l = "  l → or click   jump between the board and the agent  ·  {prefix} z  zoom the agent"
-			} else {
-				l = strings.Replace(l, "{focus}", strings.TrimSuffix(m.opt.FocusLabel, " ⇄"), 1)
-			}
-			l = strings.Replace(l, "{prefix}", m.opt.Prefix, 1)
-			lines = append(lines, l)
-			if strings.HasPrefix(m.opt.FocusLabel, "Ctrl-b") {
-				lines = append(lines, "  (in an agent, Ctrl-b twice sends Ctrl-b to Claude, which moves the session to the background)")
-			}
+		if l == "{panes}" {
+			lines = append(lines, m.panesHelp()...)
 			continue
 		}
 		lines = append(lines, l)
@@ -89,6 +80,33 @@ func (m *Model) showHelp() {
 	m.modal = &modal{title: "Keys", lines: lines, actions: []action{
 		{"?", "close", closeHelp}, {"q", "close", closeHelp}, {"enter", "close", closeHelp},
 	}}
+}
+
+// panesHelp lists the keys for moving between the board and the agent, one per line.
+func (m *Model) panesHelp() []string {
+	p := m.opt.Prefix
+	rows := [][2]string{}
+	if f := strings.TrimSuffix(m.opt.FocusLabel, " ⇄"); f != "" {
+		rows = append(rows, [2]string{f, "board ⇄ agent"})
+	}
+	rows = append(rows,
+		[2]string{"l  →", "from the board, go to the agent"},
+		[2]string{"click", "a pane to move into it"},
+		[2]string{p + " z", "zoom the agent pane (again to unzoom)"},
+	)
+	if p == "Ctrl-b" {
+		rows = append(rows, [2]string{"Ctrl-b Ctrl-b", "avoid in an agent: it sends Ctrl-b to Claude,"},
+			[2]string{"", "which moves the session to the background"})
+	}
+	w := 0
+	for _, r := range rows {
+		w = max(w, len([]rune(r[0])))
+	}
+	var out []string
+	for _, r := range rows {
+		out = append(out, "  "+r[0]+strings.Repeat(" ", w-len([]rune(r[0])))+"   "+r[1])
+	}
+	return out
 }
 
 // focusItem turns "Ctrl-b ←/→" into a footer item whose key part has no spaces.

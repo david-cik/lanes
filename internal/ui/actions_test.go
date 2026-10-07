@@ -421,7 +421,7 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 		t.Fatalf("ticket footer %q", f)
 	}
 	m.Update(key("?"))
-	if v := view(m); !strings.Contains(v, "take it off its ticket") || !strings.Contains(v, "Ctrl-b ←/→ or click") || !strings.Contains(v, "Ctrl-b twice") {
+	if v := view(m); !strings.Contains(v, "take it off its ticket") || !rowHas(v, "Ctrl-b ←/→", "board ⇄ agent") || !rowHas(v, "Ctrl-b Ctrl-b", "avoid in an agent") {
 		t.Fatalf("help:\n%s", v)
 	}
 	m.Update(key("?"))
