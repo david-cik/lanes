@@ -195,12 +195,13 @@ func (m *Model) issueTitle(key string) string {
 
 // autoLink (auto_link = true) looks at unlinked Claude sessions at most once a minute
 // each, re-reading a transcript only when it has grown, and links those that clearly
-// point at one open ticket. It only runs while you view your own tickets.
+// point at one open ticket. It only runs while you view your own tickets, and never
+// links to an up-for-grabs ticket (one nobody has taken).
 func (m *Model) autoLink() tea.Cmd {
 	if !m.opt.Config.AutoLink || len(m.issues) == 0 || m.opt.Assignee != m.opt.Config.Assignee {
 		return nil
 	}
-	open, now := m.openKeys(), m.now()
+	open, now := m.openKeys(), m.now() // up-for-grabs tickets still score, so they can outweigh yours
 	var cmds []tea.Cmd
 	for _, a := range m.unlinkedClaude() {
 		k := state.LinkKey(a.Tool, a.ID)
@@ -234,7 +235,7 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 	if seen, ok := m.autoChecked[k]; ok {
 		m.autoChecked[k] = autoSeen{seen.at, msg.size}
 	}
-	if msg.unchanged || !msg.res.Confident() {
+	if msg.unchanged || !msg.res.Confident() || m.isPool(msg.res[0].Key) {
 		return
 	}
 	if _, set := m.links[k]; set { // linked, or unlinked on purpose, meanwhile

@@ -209,3 +209,36 @@ func TestEnterOnEmptyTicketStartsNewAgent(t *testing.T) {
 		t.Fatalf("enter on an empty ticket should start the new-agent flow; notice %q", m.notice)
 	}
 }
+
+func TestAutoLinkSkipsUpForGrabs(t *testing.T) {
+	m := suggestModel(t)
+	m.opt.Config.AutoLink = true
+	for i := range m.issues {
+		if m.issues[i].Key == "ABC-1" {
+			m.issues[i].Pool = true
+		}
+	}
+	if cmd := m.autoLink(); cmd != nil {
+		if b, ok := cmd().(tea.BatchMsg); ok {
+			for _, c := range b {
+				m.Update(c())
+			}
+		}
+	}
+	if links, _ := m.opt.Store.Links(); links["claude:s1"] != "" {
+		t.Fatalf("auto-linked to an up-for-grabs ticket: %v", links)
+	}
+	// mostly about an up-for-grabs ticket, a little about yours: not confidently yours
+	m.autoChecked = map[string]autoSeen{}
+	transcript(t, os.Getenv("CLAUDE_CONFIG_DIR"), "/w/b", "s2", map[string]int{"ABC-1": 20, "ABC-2": 6})
+	if cmd := m.autoLink(); cmd != nil {
+		if b, ok := cmd().(tea.BatchMsg); ok {
+			for _, c := range b {
+				m.Update(c())
+			}
+		}
+	}
+	if links, _ := m.opt.Store.Links(); links["claude:s2"] != "" {
+		t.Fatalf("linked a session that's mostly about an up-for-grabs ticket: %v", links)
+	}
+}
