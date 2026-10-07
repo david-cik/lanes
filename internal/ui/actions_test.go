@@ -373,10 +373,11 @@ func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
 	m.cursorTo(t, "one")
 	m.Update(key("l"))
 	m.Update(key("enter")) // Remove from ABC-1
-	recs, _ := m.opt.Store.All()
-	_ = recs
 	if m.live[0].TicketKey != state.NoTicket {
 		t.Fatalf("record %+v", m.live[0])
+	}
+	if who := m.whoIs("r1"); who != "one" {
+		t.Fatalf("removed agent is called %q in messages", who)
 	}
 	v := view(m)
 	if i, j := strings.Index(v, "Unlinked"), strings.Index(v, "claude one"); i < 0 || j < i {

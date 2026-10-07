@@ -148,12 +148,12 @@ func hookKey(a *agent.Agent) string {
 
 // whoIs names the agent behind a hook key for messages: its ticket, else its name.
 func (m *Model) whoIs(id string) string {
-	if i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == id }); i >= 0 {
+	if i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == id }); i >= 0 && m.live[i].TicketKey != state.NoTicket {
 		return m.live[i].TicketKey
 	}
 	for i := range m.agents {
 		if a := &m.agents[i]; hookKey(a) == id {
-			if a.TicketKey != "" {
+			if a.TicketKey != "" && a.TicketKey != state.NoTicket {
 				return a.TicketKey
 			}
 			return a.Name

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/david-cik/lanes/internal/board"
@@ -61,10 +63,15 @@ var helpLines = []string{
 }
 
 func (m *Model) showHelp() {
-	lines := helpLines
-	if m.opt.FocusLabel != "" && m.opt.FocusLabel != "Ctrl-]" {
-		lines = append([]string{}, helpLines...)
-		lines[14] = "  " + m.opt.FocusLabel + " or click   jump between the board and the agent"
+	lines := append([]string{}, helpLines...)
+	for i, l := range lines {
+		if strings.HasPrefix(l, "  Ctrl-] or click") {
+			if m.opt.FocusLabel == "" {
+				lines[i] = "  click      jump between the board and the agent"
+			} else {
+				lines[i] = strings.Replace(l, "Ctrl-]", m.opt.FocusLabel, 1)
+			}
+		}
 	}
 	closeHelp := func() (tea.Cmd, bool) { return nil, false }
 	m.modal = &modal{title: "Keys", lines: lines, actions: []action{

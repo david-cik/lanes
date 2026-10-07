@@ -72,7 +72,7 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `a` | answer the selected (or oldest) waiting permission request |
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
-| `l` | move a session to another ticket, or remove it from its ticket (saved; matching by branch, `L` and `auto_link` won't put it back) |
+| `l` | move a session to another ticket, or remove it from its ticket (saved; matching by branch, `L` and `auto_link` won't put it back; an ended session that's removed disappears from the board) |
 | `L` | suggest links: read unlinked Claude sessions' transcripts and propose a ticket for each |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |

@@ -443,7 +443,8 @@ func (m *Model) stopSelected() tea.Cmd {
 		return nil
 	}
 	rec, ad, tm, store := m.live[i], m.adapter(a.Tool), m.opt.Tmux, m.opt.Store
-	m.modal = &modal{confirm: true, title: fmt.Sprintf("Stop %s on %s?", rec.Tool, rec.TicketKey),
+	what := m.whoIs(rec.ID)
+	m.modal = &modal{confirm: true, title: fmt.Sprintf("Stop %s on %s?", rec.Tool, what),
 		lines: []string{"The worktree and branch are kept: " + home(rec.Worktree)},
 		onYes: func() tea.Cmd {
 			if m.shown == rec.ID {
