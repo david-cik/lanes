@@ -158,7 +158,7 @@ flags:
 		}
 		defer cleanup()
 		placeholder, err := tm.SplitRight(panel, 65, []string{"sh", "-c",
-			`printf '\n  Select an agent in lanes and press enter to show it here.\n'; exec cat >/dev/null`})
+			`printf '\n  Select an agent in lanes to show it here (click it, or move to it with j/k).\n'; exec cat >/dev/null`})
 		if err != nil {
 			return err
 		}
@@ -170,6 +170,7 @@ flags:
 		label, notice, restore := setupFocus(tm, panel, cfg.FocusKey)
 		defer restore()
 		opt.FocusLabel = label
+		opt.Prefix = keyLabel(tm.GlobalOpt("prefix"))
 		if notice != "" {
 			opt.Notice = notice
 		}
@@ -341,7 +342,11 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restor
 		if b := tm.RootBinding("C-]"); strings.Contains(b, "#{==:#{session_name},") {
 			tm.Unbind("C-]")
 		}
-		label = keyLabel(tm.GlobalOpt("prefix")) + " ←/→"
+		arrows := "←/→"
+		if session, err := tm.SessionOf(panel); err == nil && bindPaneKeys(tm, session, &undo) {
+			arrows = "h/l" // herdr's keys; the arrows work too
+		}
+		label = keyLabel(tm.GlobalOpt("prefix")) + " " + arrows
 		setOpt("status-right", fmt.Sprintf(" %s or click: board ⇄ agent ", label))
 		return label, "", restore
 	}
@@ -360,6 +365,31 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restor
 	undo = append(undo, func() { tm.Unbind(key) })
 	setOpt("status-right", fmt.Sprintf(" %s or click: board ⇄ agent ", label))
 	return label + " ⇄", "", restore
+}
+
+// stockPrefix is tmux's own prefix binding for the keys lanes borrows ("" = unbound).
+var stockPrefix = map[string]string{"h": "", "l": "last-window"}
+
+// bindPaneKeys makes prefix+h / prefix+l move between board and agent in the lanes
+// session, as in herdr. Elsewhere they keep tmux's stock behavior; a key the user
+// bound themselves is left alone. Reports whether both were bound.
+func bindPaneKeys(tm tmux.Client, session string, undo *[]func()) bool {
+	ok := true
+	for key, dir := range map[string]string{"h": "L", "l": "R"} {
+		stock := stockPrefix[key]
+		cur := tm.PrefixBinding(key)
+		ours := strings.Contains(cur, "#{==:#{session_name},") // left by a crashed lanes
+		if cur != "" && !ours && (strings.Contains(cur, " -r ") || tmux.BoundCommand(cur) != stock) {
+			ok = false // the user's own binding
+			continue
+		}
+		if tm.BindPrefixPane(key, session, dir, stock) != nil {
+			ok = false
+			continue
+		}
+		*undo = append(*undo, func() { tm.RestorePrefix(key, stock) })
+	}
+	return ok
 }
 
 // keyLabel turns a tmux key name into what people call it: C-] → Ctrl-], M-Left → Alt-Left.

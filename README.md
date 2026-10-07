@@ -18,7 +18,7 @@ Alpha                                       │ claude ▸ abc-12/fix-login
     ABC-9 Rate limit the export endpoint    │
 Unlinked                                    │
   ○ claude scratch idle 1h · ~/src (ro)     │
-enter show · d details · a approve · n new …│
+enter go to · d details · a approve · n new …│
 ```
 
 ## Requirements
@@ -54,7 +54,7 @@ personal API key instead, set `LINEAR_API_KEY`. `lanes auth logout` forgets the 
 
 Tickets assigned to you, grouped by team and workflow state; completed and canceled ones
 are hidden. Under each ticket are the agents working on it. An agent belongs to a ticket
-when lanes started it for that ticket, when you linked it (`l`), or when its git branch,
+when lanes started it for that ticket, when you put it there (`t`), or when its git branch,
 session name, or folder contains the ticket key. Everything else is under **Unlinked**.
 `(ro)` marks sessions lanes didn't start: you can see and link them, and adopt them (`A`),
 but not control them.
@@ -65,17 +65,20 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 
 | Key | Does |
 |---|---|
-| `↑` `↓` (or `j` `k`) | move |
+| `↑` `↓` (or `j` `k`) | move — the right pane shows the selected agent (or the selected ticket's agent) as you go |
 | `Home` `End` (or `g` `G`) | top / bottom |
-| `enter` | on an agent: show it in the right pane · on a ticket: show its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it |
+| `PgDn` `PgUp` (or `ctrl+d` `ctrl+u`) | half a page |
+| `/` | filter tickets and agents as you type; `enter` keeps the filter, `esc` clears it |
+| `enter` | on an agent: go to it · on a ticket: go to its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it |
+| `l` `→` | go to the agent pane |
 | `n` | start an agent on the selected ticket |
 | `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running); on an ended session, resume it |
 | `a` | answer the selected (or oldest) waiting permission request |
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
-| `l` | move a session to another ticket, or remove it from its ticket (saved; matching by branch, `L` and `auto_link` won't put it back; an ended session that's removed disappears from the board) |
-| `L` | suggest links: read unlinked Claude sessions' transcripts and propose a ticket for each |
-| `/` | ask Claude in plain words, e.g. "attach my CSP session to ABC-12" — it proposes the link, you confirm |
+| `t` | move a session to another ticket, or take it off its ticket (saved; matching by branch, `T` and `auto_link` won't put it back; an ended session that's taken off disappears from the board) |
+| `T` | suggest tickets: read unlinked Claude sessions' transcripts and propose a ticket for each |
+| `:` | ask Claude in plain words, e.g. "attach my CSP session to ABC-12" — it proposes the link, you confirm |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |
 | `u` | show another person's tickets |
@@ -83,10 +86,16 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `?` | list every key (the footer shows only the keys for the selected row) |
 | `q` | quit (agents keep running in their own tmux sessions) |
 
-**Move between the board and the agent pane with your tmux prefix and an arrow**
-(`Ctrl-b ←` / `Ctrl-b →` by default), **or click either one** — lanes turns the mouse on
-for its tmux session while it runs. Inside an agent, don't press `Ctrl-b` twice: that
-sends `Ctrl-b` to Claude, which moves the session to the background.
+**Mouse:** click a row to select it (the agent shows on the right), click it again to go
+to it, scroll to move, click a key in the footer to press it, click a choice in a menu.
+
+**Move between the board and the agent pane with your tmux prefix and `h` / `l`**, as in
+herdr (`Ctrl-b h` / `Ctrl-b l` by default; the arrows work too), **or click either one** —
+lanes turns the mouse on for its tmux session while it runs. `prefix z` zooms the agent
+pane. The `h` / `l` bindings act only in the lanes session (elsewhere they keep tmux's
+defaults), are removed when lanes quits, and aren't added if you've bound those keys
+yourself. Inside an agent, don't press `Ctrl-b` twice: that sends `Ctrl-b` to Claude,
+which moves the session to the background.
 
 Prefer one key? Set `focus_key` (a tmux key name such as `"C-]"` or `"F12"`): it jumps
 between board and agent inside the lanes session only, passes through everywhere else,
@@ -130,10 +139,10 @@ Claude's own prompt stays on screen the whole time, so you can always answer the
 
 ## Sessions lanes didn't start
 
-`L` reads the transcripts Claude keeps for each unlinked session and proposes the open
+`T` reads the transcripts Claude keeps for each unlinked session and proposes the open
 ticket it mentions most — counting what you typed above commands, and those above the
 agent's own text, and recent mentions above old ones. Clear matches come pre-checked;
-mixed ones show the alternatives. Nothing is linked until you press enter, and `l`
+mixed ones show the alternatives. Nothing is linked until you press enter, and `t`
 changes or removes any link. With `auto_link = true`, new sessions with one clearly
 dominant ticket are linked automatically.
 

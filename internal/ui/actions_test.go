@@ -129,7 +129,7 @@ func TestExternalAgentCannotBeFocusedButCanBeLinked(t *testing.T) {
 	if len(ft.log) != 0 || !strings.Contains(m.notice, "not started by lanes") {
 		t.Fatalf("log=%v notice=%q", ft.log, m.notice)
 	}
-	m.Update(key("l"))
+	m.Update(key("t"))
 	m.Update(key("enter")) // first ticket: ABC-1
 	links, _ := m.opt.Store.Links()
 	if links["claude:x9"] != "ABC-1" {
@@ -139,7 +139,7 @@ func TestExternalAgentCannotBeFocusedButCanBeLinked(t *testing.T) {
 		t.Fatalf("agent not moved under ticket:\n%s", view(m))
 	}
 	m.cursorTo(t, "outside")
-	m.Update(key("l"))
+	m.Update(key("t"))
 	if m.modal.items[0].label != "Remove from ABC-1" {
 		t.Fatalf("first choice %q", m.modal.items[0].label)
 	}
@@ -377,7 +377,7 @@ func TestFolderLaunchOfferWorktreeInstead(t *testing.T) {
 func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
 	m, _ := controlModel(t)
 	m.cursorTo(t, "one")
-	m.Update(key("l"))
+	m.Update(key("t"))
 	m.Update(key("enter")) // Remove from ABC-1
 	if m.live[0].TicketKey != state.NoTicket {
 		t.Fatalf("record %+v", m.live[0])
@@ -396,7 +396,7 @@ func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
 	m.issues = append(m.issues, tracker.Issue{Key: "ABC-2", Title: "two", Team: "Alpha", State: "Todo", StateType: "unstarted"})
 	m.rebuild()
 	m.cursorTo(t, " one  ")
-	m.Update(key("l"))
+	m.Update(key("t"))
 	for i, c := range m.modal.items {
 		if strings.HasPrefix(c.label, "ABC-2") {
 			m.modal.pick = i
@@ -421,7 +421,7 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 		t.Fatalf("ticket footer %q", f)
 	}
 	m.Update(key("?"))
-	if v := view(m); !strings.Contains(v, "remove it from its ticket") || !strings.Contains(v, "Ctrl-b ←/→ or click") || !strings.Contains(v, "Ctrl-b twice") {
+	if v := view(m); !strings.Contains(v, "take it off its ticket") || !strings.Contains(v, "Ctrl-b ←/→ or click") || !strings.Contains(v, "Ctrl-b twice") {
 		t.Fatalf("help:\n%s", v)
 	}
 	m.Update(key("?"))
@@ -445,7 +445,7 @@ func TestLinkMadeOutsidePanelShowsOnRefresh(t *testing.T) {
 	// and a panel link doesn't drop a CLI link made after the last refresh
 	m.opt.Store.SetLink("claude:other", "ABC-9")
 	m.cursorTo(t, "outside")
-	m.Update(key("l"))
+	m.Update(key("t"))
 	m.Update(key("enter")) // Remove from ABC-1
 	if l, _ := m.opt.Store.Links(); l["claude:other"] != "ABC-9" || l["claude:x9"] != state.NoTicket {
 		t.Fatalf("links %v", l)
@@ -462,7 +462,7 @@ func TestAskProposesThenLinksOnConfirm(t *testing.T) {
 		gotPrompt = prompt
 		return "Sure: ```json\n{\"session\":\"x9\",\"ticket\":\"ABC-1\",\"reason\":\"it talks about fixing it\"}\n```", nil
 	}
-	m.Update(key("/"))
+	m.Update(key(":"))
 	for _, r := range "attach outside to ABC-1" {
 		m.Update(key(string(r)))
 	}

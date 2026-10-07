@@ -170,3 +170,38 @@ func TestSessionOptRoundTripsQuotedValues(t *testing.T) {
 		t.Fatalf("after restore %q", again)
 	}
 }
+
+func TestPrefixPaneBindingRestores(t *testing.T) {
+	c := server(t)
+	if _, err := c.NewSession("lanes", t.TempDir(), nil, sleeper("p")); err != nil {
+		t.Fatal(err)
+	}
+	before := c.PrefixBinding("l")
+	if err := c.BindPrefixPane("l", "lanes", "R", "last-window"); err != nil {
+		t.Fatal(err)
+	}
+	if b := c.PrefixBinding("l"); !strings.Contains(b, "#{==:#{session_name},lanes}") || !strings.Contains(b, "select-pane -R") || !strings.Contains(b, "last-window") {
+		t.Fatalf("binding %q", b)
+	}
+	c.RestorePrefix("l", "last-window")
+	if after := c.PrefixBinding("l"); strings.Join(strings.Fields(after), " ") != strings.Join(strings.Fields(before), " ") {
+		t.Fatalf("restored %q, was %q", after, before)
+	}
+	c.BindPrefixPane("h", "lanes", "L", "")
+	c.RestorePrefix("h", "")
+	if b := c.PrefixBinding("h"); b != "" {
+		t.Fatalf("h still bound: %q", b)
+	}
+}
+
+func TestPrefixBindingFoundWithRepeatFlag(t *testing.T) {
+	c := server(t)
+	if _, err := c.NewSession("lanes", t.TempDir(), nil, sleeper("p")); err != nil {
+		t.Fatal(err)
+	}
+	c.run("bind-key", "-r", "-T", "prefix", "h", "select-pane", "-L")
+	b := c.PrefixBinding("h")
+	if !strings.Contains(b, " -r ") || BoundCommand(b) != "select-pane -L" {
+		t.Fatalf("binding %q command %q", b, BoundCommand(b))
+	}
+}

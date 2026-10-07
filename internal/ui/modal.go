@@ -134,6 +134,8 @@ func (md *modal) view(b *strings.Builder, width, body int) {
 			used++
 		}
 	case md.confirm:
+		b.WriteString(fmt.Sprintf("  %-4s %s\n  %-4s %s\n", "y", "yes", "n", "no"))
+		used += 2
 	case md.input:
 		b.WriteString("> " + md.text + "▏\n")
 		used++

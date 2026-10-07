@@ -48,7 +48,7 @@ type autoSeen struct {
 }
 
 // unlinkedClaude lists sessions lanes didn't start that aren't on any open ticket.
-// A manual link of "" means the user unlinked the session on purpose: it's offered by L
+// A manual link of "" means the user unlinked the session on purpose: it's offered by T
 // but never auto-linked again.
 func (m *Model) unlinkedClaude() []agent.Agent {
 	open := m.openKeys()
@@ -140,7 +140,7 @@ func (m *Model) reviewKey(k tea.KeyPressMsg) tea.Cmd {
 		}
 		m.review = nil
 		m.rebuild()
-		m.say(fmt.Sprintf("linked %d sessions (l on a session changes or removes its link)", n), err)
+		m.say(fmt.Sprintf("linked %d sessions (t on a session changes or removes its link)", n), err)
 		return m.detailsMoved()
 	}
 	return nil
@@ -249,7 +249,7 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 		return
 	}
 	m.rebuild()
-	m.say(fmt.Sprintf("auto-linked %s → %s (l changes it)", msg.name, msg.res[0].Key), err)
+	m.say(fmt.Sprintf("auto-linked %s → %s (t changes it)", msg.name, msg.res[0].Key), err)
 }
 
 // endedMax hides ended sessions whose transcript hasn't changed in this long.

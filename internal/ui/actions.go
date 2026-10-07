@@ -70,7 +70,7 @@ func (m *Model) controllable() (*agent.Agent, bool) {
 	case !ok:
 		m.say("", fmt.Errorf("select an agent"))
 	case a.RecordID == "":
-		m.say("", fmt.Errorf("%s was not started by lanes, so lanes can't control it (A adopts it, l links it to a ticket)", a.Name))
+		m.say("", fmt.Errorf("%s was not started by lanes, so lanes can't control it (A adopts it, t puts it on a ticket)", a.Name))
 	case m.stopping[a.RecordID]:
 		m.say("", fmt.Errorf("%s is stopping", a.Name))
 	case m.opt.Tmux == nil:
@@ -149,21 +149,29 @@ func (m *Model) openTicket(issue tracker.Issue) tea.Cmd {
 // focus shows an agent in the right slot: the current one goes home first, so every
 // agent not on screen sits alone in its own lanes-<id> session.
 func (m *Model) focus(id, pane string) {
-	tm := m.opt.Tmux
-	if m.shown != id {
-		if err := m.unshow(); err != nil {
-			m.say("", err) // the slot is not in a known state; don't move more panes
-			return
-		}
-		if err := tm.Swap(pane, m.opt.Placeholder); err != nil {
-			m.say("", err)
-			return
-		}
-		m.shown, m.shownPane = id, pane
+	if !m.show(id, pane) {
+		return
 	}
-	if err := tm.Select(pane); err != nil {
+	if err := m.opt.Tmux.Select(pane); err != nil {
 		m.say("", err)
 	}
+}
+
+// show puts an agent in the right slot without moving focus to it.
+func (m *Model) show(id, pane string) bool {
+	if m.shown == id {
+		return true
+	}
+	if err := m.unshow(); err != nil {
+		m.say("", err) // the slot is not in a known state; don't move more panes
+		return false
+	}
+	if err := m.opt.Tmux.Swap(pane, m.opt.Placeholder); err != nil {
+		m.say("", err)
+		return false
+	}
+	m.shown, m.shownPane = id, pane
+	return true
 }
 
 // unshow puts the placeholder back in the slot. If the shown agent already exited,
@@ -487,7 +495,7 @@ func stop(rec state.Record, ad agent.Adapter, tm Tmux, store state.Store) error 
 	return store.Delete(rec.ID)
 }
 
-// linkSelected (l) puts the selected session on another ticket, or removes it from its
+// linkSelected (t) puts the selected session on another ticket, or removes it from its
 // ticket for good. Works for sessions lanes started (their record changes) and for
 // any other session (a saved link).
 func (m *Model) linkSelected() tea.Cmd {

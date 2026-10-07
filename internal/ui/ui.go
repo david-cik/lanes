@@ -86,6 +86,7 @@ type Options struct {
 	Notice     string            // shown in the footer at start (e.g. why hooks are off)
 	Readers    Readers           // git / PR / browser access for details; zero = real ones
 	FocusLabel string            // key that jumps between board and agent, e.g. "Ctrl-]"; "" = none
+	Prefix     string            // the tmux prefix as people write it, e.g. "Ctrl-b"
 }
 
 type Model struct {
@@ -99,6 +100,8 @@ type Model struct {
 	rows    []board.Row
 	cursor  int
 	offset  int
+	filter  string // board rows narrowed to those matching it (/)
+	typing  bool   // the filter is being typed
 	width   int
 	height  int
 	updated time.Time
@@ -141,6 +144,9 @@ func New(opt Options) *Model {
 	}
 	if m.readers.Ask == nil {
 		m.readers.Ask = claudeAsk("sonnet")
+	}
+	if m.opt.Prefix == "" {
+		m.opt.Prefix = "Ctrl-b"
 	}
 	m.notice = opt.Notice
 	if l, err := opt.Store.Links(); err == nil {
@@ -212,7 +218,7 @@ func (m *Model) stateOrder() map[string][]string {
 func (m *Model) rebuild() {
 	agents := slices.Clone(m.agents)
 	m.overlay(agents)
-	m.rows = board.Build(m.issues, agents, m.links, m.stateOrder())
+	m.rows = filterRows(board.Build(m.issues, agents, m.links, m.stateOrder()), m.filter)
 	m.cursor = min(m.cursor, max(len(m.rows)-1, 0))
 }
 
@@ -303,6 +309,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gotSuggestions(review(msg))
 	case autoLinkMsg:
 		m.gotAutoLink(msg)
+	case tea.MouseClickMsg:
+		return m, m.click(tea.Mouse(msg))
+	case tea.MouseWheelMsg:
+		return m, m.wheel(tea.Mouse(msg))
 	case tea.KeyPressMsg:
 		if m.review != nil {
 			return m, m.reviewKey(msg)
@@ -325,22 +335,35 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 	m.notice = ""
+	if m.typing {
+		if cmd, ok := m.filterKey(k); ok {
+			return cmd
+		}
+	}
 	switch k.String() {
 	case "q", "ctrl+c":
 		m.unshow() // best effort on the way out; Reconcile repairs the rest next start
 		return tea.Quit
 	case "j", "down":
-		m.cursor = min(m.cursor+1, max(len(m.rows)-1, 0))
-		return m.detailsMoved()
+		return m.moveTo(m.cursor + 1)
 	case "k", "up":
-		m.cursor = max(m.cursor-1, 0)
-		return m.detailsMoved()
+		return m.moveTo(m.cursor - 1)
 	case "g", "home":
-		m.cursor = 0
-		return m.detailsMoved()
+		return m.moveTo(0)
 	case "G", "end":
-		m.cursor = max(len(m.rows)-1, 0)
-		return m.detailsMoved()
+		return m.moveTo(len(m.rows) - 1)
+	case "ctrl+d", "pgdown":
+		return m.moveTo(m.cursor + m.boardHeight()/2)
+	case "ctrl+u", "pgup":
+		return m.moveTo(m.cursor - m.boardHeight()/2)
+	case "l", "right":
+		return m.focusAgent()
+	case "/":
+		m.typing = true
+	case "esc":
+		if m.filter != "" {
+			m.setFilter("")
+		}
 	case "d":
 		m.details = !m.details
 		if m.details {
@@ -368,7 +391,7 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.sendSelected()
 	case "x":
 		return m.stopSelected()
-	case "l":
+	case "t":
 		return m.linkSelected()
 	case "a":
 		return m.approve()
@@ -376,9 +399,9 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		m.showHelp()
 	case "A":
 		return m.adoptSelected()
-	case "L":
+	case "T":
 		return m.suggestLinks()
-	case "/":
+	case ":":
 		return m.ask()
 	}
 	return nil
@@ -432,10 +455,7 @@ func (m *Model) View() tea.View {
 	case m.modal != nil:
 		m.modal.view(&b, m.width, body)
 	case m.details:
-		boardH := body / 2
-		if boardH < 6 || body-boardH < 8 { // too short to split: details take it all
-			boardH = 0
-		}
+		boardH := m.boardHeight()
 		if boardH > 0 {
 			m.viewBoard(&b, boardH)
 		}
@@ -458,13 +478,14 @@ func (m *Model) View() tea.View {
 		b.WriteString(faint.Render(trunc("j/k move · space toggle · tab other ticket · enter link checked · esc cancel", m.width)))
 	case m.modal != nil:
 		b.WriteString(faint.Render(trunc(m.modal.help(), m.width)))
-	case m.opt.Tmux == nil:
-		b.WriteString(m.footerLine([]string{"d details", "l ticket", "L suggest", "u assignee", "? keys", "· read-only (start lanes in tmux to launch agents)"}))
+	case m.typing:
+		b.WriteString(line(m.width, s("/", keyS), s(m.filter+"▏", plainS), s("   enter keep · esc clear · ↑↓ move", faint)))
 	default:
 		b.WriteString(m.footerLine(m.footerItems()))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 

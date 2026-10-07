@@ -51,7 +51,7 @@ func suggestModel(t *testing.T) *Model {
 
 func TestSuggestReviewAndApply(t *testing.T) {
 	m := suggestModel(t)
-	_, cmd := m.Update(keyName("L"))
+	_, cmd := m.Update(keyName("T"))
 	m.Update(cmd())
 	if m.review == nil || len(m.review.items) != 2 || m.review.skipped != 1 {
 		t.Fatalf("review %+v", m.review)
@@ -77,14 +77,14 @@ func TestSuggestReviewAndApply(t *testing.T) {
 
 func TestSuggestSpaceTogglesAndEscCancels(t *testing.T) {
 	m := suggestModel(t)
-	_, cmd := m.Update(keyName("L"))
+	_, cmd := m.Update(keyName("T"))
 	m.Update(cmd())
 	m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}) // uncheck "clear"
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if links, _ := m.opt.Store.Links(); len(links) != 0 || m.review != nil {
 		t.Fatalf("esc should change nothing: %v", links)
 	}
-	_, cmd = m.Update(keyName("L"))
+	_, cmd = m.Update(keyName("T"))
 	m.Update(cmd())
 	m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
 	m.Update(key("enter"))

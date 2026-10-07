@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -174,13 +175,28 @@ func (c Client) GlobalOpt(key string) string {
 }
 
 // RootBinding returns the root-table (no prefix) binding line for key, or "".
+func (c Client) RootBinding(key string) string { return c.binding("root", key) }
+
+// PrefixBinding returns the prefix-table binding line for key, or "".
+func (c Client) PrefixBinding(key string) string { return c.binding("prefix", key) }
+
 // (list-keys with a key argument doesn't match punctuation keys like C-], so scan.)
-func (c Client) RootBinding(key string) string {
-	out, _ := c.run("list-keys", "-T", "root")
+func (c Client) binding(table, key string) string {
+	out, _ := c.run("list-keys", "-T", table)
 	for _, line := range strings.Split(out, "\n") {
-		if f := strings.Fields(line); len(f) >= 4 && f[3] == key {
+		f := strings.Fields(line) // flags such as -r may come before -T
+		if i := slices.Index(f, "-T"); i >= 0 && i+2 < len(f) && f[i+1] == table && f[i+2] == key {
 			return line
 		}
+	}
+	return ""
+}
+
+// BoundCommand is the command part of a binding line from list-keys ("" if none).
+func BoundCommand(line string) string {
+	f := strings.Fields(line)
+	if i := slices.Index(f, "-T"); i >= 0 && i+3 <= len(f) {
+		return strings.Join(f[i+3:], " ")
 	}
 	return ""
 }
@@ -190,6 +206,27 @@ func (c Client) RootBinding(key string) string {
 func (c Client) BindFocusToggle(key, session, panel string) error {
 	inner := fmt.Sprintf("if-shell -F '#{==:#{pane_id},%s}' 'select-pane -R' 'select-pane -t %s'", panel, panel)
 	_, err := c.run("bind-key", "-n", key, "if-shell", "-F", "#{==:#{session_name},"+session+"}", inner, "send-keys "+key)
+	return err
+}
+
+// BindPrefixPane makes prefix+key select the pane in direction dir (L, R) inside
+// session; elsewhere it runs fallback, a tmux command ("" = nothing).
+func (c Client) BindPrefixPane(key, session, dir, fallback string) error {
+	args := []string{"bind-key", "-T", "prefix", key, "if-shell", "-F", "#{==:#{session_name}," + session + "}", "select-pane -" + dir}
+	if fallback != "" {
+		args = append(args, fallback)
+	}
+	_, err := c.run(args...)
+	return err
+}
+
+// RestorePrefix binds prefix+key back to cmd (a single tmux command), or unbinds it.
+func (c Client) RestorePrefix(key, cmd string) error {
+	if cmd == "" {
+		_, err := c.run("unbind-key", "-T", "prefix", key)
+		return err
+	}
+	_, err := c.run(append([]string{"bind-key", "-T", "prefix", key}, strings.Fields(cmd)...)...)
 	return err
 }
 
