@@ -134,11 +134,15 @@ func TestExternalAgentCannotBeFocusedButCanBeLinked(t *testing.T) {
 	}
 	m.cursorTo(t, "outside")
 	m.Update(key("l"))
-	m.Update(key("enter")) // "(unlink …)" is first now
-	if links, _ := m.opt.Store.Links(); links["claude:x9"] != "" {
-		t.Fatalf("still linked: %v", links)
-	} else if _, kept := links["claude:x9"]; !kept {
-		t.Fatal("unlink not remembered (auto_link would relink it)")
+	if m.modal.items[0].label != "Remove from ABC-1" {
+		t.Fatalf("first choice %q", m.modal.items[0].label)
+	}
+	m.Update(key("enter"))
+	if links, _ := m.opt.Store.Links(); links["claude:x9"] != state.NoTicket {
+		t.Fatalf("removal not remembered: %v", links)
+	}
+	if v := view(m); strings.Index(v, "Unlinked") < 0 || strings.Index(v, "outside") < strings.Index(v, "Unlinked") {
+		t.Fatalf("session not under Unlinked:\n%s", view(m))
 	}
 }
 
@@ -361,5 +365,57 @@ func TestFolderLaunchOfferWorktreeInstead(t *testing.T) {
 	}
 	if m.modal == nil && !strings.Contains(m.notice, "no git repos found") {
 		t.Fatalf("notice %q", m.notice)
+	}
+}
+
+func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
+	m, _ := controlModel(t)
+	m.cursorTo(t, "one")
+	m.Update(key("l"))
+	m.Update(key("enter")) // Remove from ABC-1
+	recs, _ := m.opt.Store.All()
+	_ = recs
+	if m.live[0].TicketKey != state.NoTicket {
+		t.Fatalf("record %+v", m.live[0])
+	}
+	v := view(m)
+	if i, j := strings.Index(v, "Unlinked"), strings.Index(v, "claude one"); i < 0 || j < i {
+		t.Fatalf("launched agent not moved to Unlinked:\n%s", v)
+	}
+	// and onto another ticket
+	m.issues = append(m.issues, tracker.Issue{Key: "ABC-2", Title: "two", Team: "Alpha", State: "Todo", StateType: "unstarted"})
+	m.rebuild()
+	m.cursorTo(t, "claude one")
+	m.Update(key("l"))
+	for i, c := range m.modal.items {
+		if strings.HasPrefix(c.label, "ABC-2") {
+			m.modal.pick = i
+		}
+	}
+	m.Update(key("enter"))
+	if m.live[0].TicketKey != "ABC-2" {
+		t.Fatalf("record %+v", m.live[0])
+	}
+}
+
+func TestFooterFitsAndHelpListsEverything(t *testing.T) {
+	m, _ := controlModel(t)
+	m.opt.FocusLabel = "Ctrl-]"
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	m.cursorTo(t, "one")
+	if f := m.footer(); !strings.Contains(f, "x stop") || !strings.Contains(f, "? keys") || len([]rune(f)) > 80 {
+		t.Fatalf("agent footer %q (%d)", f, len([]rune(f)))
+	}
+	m.cursorTo(t, "ABC-1 fix it")
+	if f := m.footer(); !strings.Contains(f, "n new") || strings.Contains(f, "x stop") || len([]rune(f)) > 80 {
+		t.Fatalf("ticket footer %q", f)
+	}
+	m.Update(key("?"))
+	if v := view(m); !strings.Contains(v, "remove it from its ticket") || !strings.Contains(v, "Ctrl-] or click") {
+		t.Fatalf("help:\n%s", v)
+	}
+	m.Update(key("?"))
+	if m.modal != nil {
+		t.Fatal("? didn't close the key list")
 	}
 }

@@ -2,6 +2,8 @@ package board
 
 import (
 	"fmt"
+
+	"github.com/david-cik/lanes/internal/state"
 	"strings"
 	"testing"
 	"time"
@@ -92,5 +94,21 @@ func TestLinkPrecedenceAndStateOrder(t *testing.T) {
 `
 	if got := render(Build(issues, agents, links, order)); got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRemovedFromTicketStaysUnlinked(t *testing.T) {
+	issues := []tracker.Issue{{Key: "ABC-1", Title: "one", Team: "Alpha", State: "Todo", StateType: "unstarted"}}
+	agents := []agent.Agent{
+		{Tool: "claude", ID: "s1", Name: "removed", Branch: "abc-1-x"},          // branch matches, link says no
+		{Tool: "claude", ID: "s2", Name: "launched", TicketKey: state.NoTicket}, // launch record says no
+	}
+	got := render(Build(issues, agents, map[string]string{"claude:s1": state.NoTicket}, nil))
+	want := "Alpha\n Todo\n  ABC-1 one\nUnlinked\n @removed\n @launched\n"
+	if got != want {
+		t.Fatalf("got:\n%s", got)
+	}
+	if agents[0].TicketKey != "" {
+		t.Fatal("sentinel leaked into TicketKey")
 	}
 }

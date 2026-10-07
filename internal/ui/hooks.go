@@ -338,7 +338,8 @@ func (m *Model) openApproval(id string) {
 			return nil, false
 		}},
 	)
-	m.modal = &modal{id: approvalID(p), title: ticket + " wants permission", lines: lines, actions: acts}
+	m.modal = &modal{id: approvalID(p), title: ticket + " wants permission", lines: lines, actions: acts,
+		hint: "esc close (the request stays waiting)"}
 }
 
 // decide answers request p, and only p: if the agent has moved on to another request

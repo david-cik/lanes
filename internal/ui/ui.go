@@ -358,6 +358,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.linkSelected()
 	case "a":
 		return m.approve()
+	case "?":
+		m.showHelp()
 	case "A":
 		return m.adoptSelected()
 	case "L":
@@ -446,15 +448,11 @@ func (m *Model) View() tea.View {
 	case m.review != nil:
 		b.WriteString(faint.Render(trunc("j/k move · space toggle · tab other ticket · enter link checked · esc cancel", m.width)))
 	case m.modal != nil:
-		b.WriteString(faint.Render(trunc(m.modal.hint(), m.width)))
+		b.WriteString(faint.Render(trunc(m.modal.help(), m.width)))
 	case m.opt.Tmux == nil:
 		b.WriteString(faint.Render(trunc("j/k move · d details · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)", m.width)))
 	default:
-		hint := "enter open · d details · a approve · n new · A adopt · s send · x stop · l link · L suggest links · r refresh · u assignee · q quit"
-		if m.opt.FocusLabel != "" {
-			hint = m.opt.FocusLabel + " board⇄agent · " + hint
-		}
-		b.WriteString(faint.Render(trunc(hint, m.width)))
+		b.WriteString(faint.Render(trunc(m.footer(), m.width)))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true

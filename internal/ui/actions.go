@@ -485,42 +485,55 @@ func stop(rec state.Record, ad agent.Adapter, tm Tmux, store state.Store) error 
 	return store.Delete(rec.ID)
 }
 
+// linkSelected (l) puts the selected session on another ticket, or removes it from its
+// ticket for good. Works for sessions lanes started (their record changes) and for
+// any other session (a saved link).
 func (m *Model) linkSelected() tea.Cmd {
 	a, ok := m.selectedAgent()
 	if !ok {
-		m.say("", fmt.Errorf("select an agent session to link"))
+		m.say("", fmt.Errorf("select a session"))
 		return nil
 	}
-	if a.RecordID != "" {
-		m.say("", fmt.Errorf("lanes started this agent for %s; its ticket is fixed", a.TicketKey))
-		return nil
-	}
-	key := state.LinkKey(a.Tool, a.ID)
+	sess := *a // as shown: TicketKey is resolved
 	var items []choice
-	if m.links[key] != "" {
-		items = append(items, choice{"(unlink — go back to matching by branch/name)", ""})
+	if sess.TicketKey != "" {
+		items = append(items, choice{"Remove from " + sess.TicketKey, state.NoTicket})
 	}
 	for _, i := range m.issues {
-		items = append(items, choice{i.Key + "  " + i.Title, i.Key})
+		if i.Key != sess.TicketKey {
+			items = append(items, choice{i.Key + "  " + i.Title, i.Key})
+		}
 	}
-	name := a.Name
-	m.modal = &modal{title: "Link " + name + " to which ticket?", items: items,
+	m.modal = &modal{title: "Ticket for " + sess.Name, items: items,
 		onChoose: func(c choice) tea.Cmd {
-			if c.value == "" {
-				m.links[key] = "" // unlinked on purpose: auto_link leaves it alone from now on
-			} else {
-				m.links[key] = c.value
-			}
-			err := m.opt.Store.SaveLinks(m.links)
+			err := m.setTicket(sess, c.value)
 			m.rebuild()
-			if c.value == "" {
-				m.say("unlinked "+name, err)
+			if c.value == state.NoTicket {
+				m.say("removed "+sess.Name+" from "+sess.TicketKey, err)
 			} else {
-				m.say("linked "+name+" to "+c.value, err)
+				m.say("moved "+sess.Name+" to "+c.value, err)
 			}
-			return nil
+			return m.detailsMoved()
 		}}
 	return nil
+}
+
+func (m *Model) setTicket(a agent.Agent, ticket string) error {
+	if a.RecordID == "" {
+		m.links[state.LinkKey(a.Tool, a.ID)] = ticket
+		return m.opt.Store.SaveLinks(m.links)
+	}
+	i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == a.RecordID })
+	if i < 0 {
+		return fmt.Errorf("%s is no longer running", a.Name)
+	}
+	m.live[i].TicketKey = ticket
+	for j := range m.agents {
+		if m.agents[j].RecordID == a.RecordID {
+			m.agents[j].TicketKey = ticket
+		}
+	}
+	return m.opt.Store.Save(m.live[i])
 }
 
 // --- adopt ---

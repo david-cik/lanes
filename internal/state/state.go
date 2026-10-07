@@ -109,6 +109,10 @@ func (s Store) Prune(recs []Record, paneOf map[string]string) ([]Record, error) 
 	return keep, errors.Join(errs...)
 }
 
+// NoTicket, as a link or a launch record's ticket, keeps a session off every ticket:
+// the user removed it, so matching by branch or name, L, and auto_link leave it alone.
+const NoTicket = "-"
+
 // Links maps "<tool>:<sessionId>" to a ticket key for manually linked external sessions.
 type Links map[string]string
 

@@ -52,6 +52,11 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 		if a.TicketKey == "" {
 			a.TicketKey = links[state.LinkKey(a.Tool, a.ID)]
 		}
+		if a.TicketKey == state.NoTicket { // removed from its ticket on purpose
+			a.TicketKey = ""
+			unlinked = append(unlinked, a)
+			continue
+		}
 		if a.TicketKey == "" {
 			a.TicketKey = link.Match(*a, pre)
 		}

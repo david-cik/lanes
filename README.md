@@ -72,12 +72,13 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `a` | answer the selected (or oldest) waiting permission request |
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
-| `l` | link / unlink a session to a ticket (saved) |
+| `l` | move a session to another ticket, or remove it from its ticket (saved; matching by branch, `L` and `auto_link` won't put it back) |
 | `L` | suggest links: read unlinked Claude sessions' transcripts and propose a ticket for each |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |
 | `u` | show another person's tickets |
 | `r` | refresh |
+| `?` | list every key (the footer shows only the keys for the selected row) |
 | `q` | quit (agents keep running in their own tmux sessions) |
 
 **`Ctrl-]` jumps between the board and the agent pane** (or click either one — lanes turns

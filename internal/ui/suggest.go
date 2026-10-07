@@ -259,7 +259,7 @@ func endedSessions(links state.Links, running []agent.Agent) []agent.Agent {
 	var out []agent.Agent
 	for k, ticket := range links {
 		tool, sid, ok := strings.Cut(k, ":")
-		if !ok || ticket == "" || tool != "claude" || alive[k] {
+		if !ok || ticket == "" || ticket == state.NoTicket || tool != "claude" || alive[k] {
 			continue
 		}
 		p := suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), "", sid)

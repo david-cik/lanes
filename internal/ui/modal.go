@@ -28,6 +28,7 @@ type modal struct {
 	text     string
 	confirm  bool
 	actions  []action
+	hint     string // footer text; "" = the default for the modal's kind
 	onChoose func(choice) tea.Cmd
 	onInput  func(string) tea.Cmd
 	onYes    func() tea.Cmd
@@ -105,10 +106,12 @@ func dropLast(s string) string {
 	return string(r[:len(r)-1])
 }
 
-func (md *modal) hint() string {
+func (md *modal) help() string {
 	switch {
+	case md.hint != "":
+		return md.hint
 	case md.actions != nil:
-		return "esc close (the request stays waiting)"
+		return "esc close"
 	case md.confirm:
 		return "y/enter confirm · n/esc cancel"
 	case md.input:
