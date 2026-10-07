@@ -3,8 +3,10 @@ package linear
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -19,7 +21,11 @@ var issueFields = []string{"id", "title", "url", "gitBranchName", "status", "sta
 
 type Client struct{ s *mcp.ClientSession }
 
-var _ tracker.Tracker = (*Client)(nil)
+var (
+	_ tracker.Tracker = (*Client)(nil)
+	_ tracker.Pooler  = (*Client)(nil)
+	_ tracker.Claimer = (*Client)(nil)
+)
 
 // Dial connects to endpoint. With apiKey set it sends it as a Bearer token;
 // otherwise oauth (may be nil) handles authorization.
@@ -46,8 +52,63 @@ func Connect(ctx context.Context, t mcp.Transport) (*Client, error) {
 func (c *Client) Close() error { return c.s.Close() }
 
 func (c *Client) Issues(ctx context.Context, assignee string) ([]tracker.Issue, error) {
+	return c.list(ctx, map[string]any{"assignee": assignee, "fields": issueFields, "limit": 250})
+}
+
+// Pool lists each team's unassigned issues in a not-started (Todo-type) state.
+func (c *Client) Pool(ctx context.Context, teams []string) ([]tracker.Issue, error) {
 	var all []tracker.Issue
-	args := map[string]any{"assignee": assignee, "fields": issueFields, "limit": 250}
+	for _, t := range teams {
+		// "null" is how Linear's list_issues asks for issues with no assignee.
+		is, err := c.list(ctx, map[string]any{"team": t, "assignee": "null", "state": "unstarted", "fields": issueFields, "limit": 250})
+		if err != nil {
+			return nil, err
+		}
+		for i := range is {
+			is[i].Pool = true
+		}
+		all = append(all, is...)
+	}
+	return all, nil
+}
+
+// Claim assigns key to the signed-in user and moves it to the team's first started
+// state. Linear doesn't report its states' order, so that's the first started one in
+// order (the configured state_order), else "In Progress", else any started state.
+func (c *Client) Claim(ctx context.Context, key, team string, order []string) (string, error) {
+	b, err := c.call(ctx, "list_issue_statuses", map[string]any{"team": team})
+	if err != nil {
+		return "", err
+	}
+	var states []struct{ Name, Type string }
+	if err := json.Unmarshal(b, &states); err != nil {
+		return "", fmt.Errorf("linear: list_issue_statuses: %w", err)
+	}
+	var started []string
+	for _, s := range states {
+		if s.Type == "started" {
+			started = append(started, s.Name)
+		}
+	}
+	if len(started) == 0 {
+		return "", fmt.Errorf("linear: team %s has no started state", team)
+	}
+	state := started[0]
+	if slices.Contains(started, "In Progress") {
+		state = "In Progress"
+	}
+	for _, s := range order {
+		if slices.Contains(started, s) {
+			state = s
+			break
+		}
+	}
+	_, err = c.call(ctx, "save_issue", map[string]any{"id": key, "assignee": "me", "state": state})
+	return state, err
+}
+
+func (c *Client) list(ctx context.Context, args map[string]any) ([]tracker.Issue, error) {
+	var all []tracker.Issue
 	seen := map[string]bool{}
 	for {
 		b, err := c.call(ctx, "list_issues", args)

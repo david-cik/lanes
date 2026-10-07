@@ -25,6 +25,12 @@ func (m *Model) footerItems() []string {
 	r, ok := m.selected()
 	switch {
 	case !ok:
+	case isPoolLane(r) && m.poolOpen:
+		keys = append(keys, "enter hide")
+	case isPoolLane(r):
+		keys = append(keys, "enter show")
+	case r.Kind == board.TicketRow && r.Issue.Pool:
+		keys = append(keys, "enter start", "d details", "o open")
 	case r.Kind == board.TicketRow:
 		keys = append(keys, "enter agent", "n new", "d details", "o open")
 	case r.Kind == board.AgentRow && r.Agent.Ended:
@@ -49,6 +55,8 @@ var helpLines = []string{
 	"  enter      agent: go to it · ticket: go to its agent, or resume / start one · ended: resume",
 	"  l  →       go to the agent pane",
 	"  n          start an agent on the ticket (y start · f other folder · w worktree)",
+	"             on an up-for-grabs ticket it also claims it in Linear (c leaves it)",
+	"  enter      on UP FOR GRABS: show or hide your teams' unassigned Todo tickets",
 	"  A          adopt a session lanes didn't start (or resume an ended one)",
 	"  s          send text to the agent",
 	"  x          stop the agent (worktree and branch are kept)",

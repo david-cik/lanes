@@ -26,6 +26,7 @@ type (
 		assignee string
 		issues   []tracker.Issue
 		err      error
+		poolErr  error // the assigned tickets loaded but the unassigned ones didn't
 	}
 	agentsMsg struct {
 		seq    int
@@ -90,24 +91,25 @@ type Options struct {
 }
 
 type Model struct {
-	opt     Options
-	label   string // assignee shown in the header
-	issues  []tracker.Issue
-	agents  []agent.Agent
-	live    []state.Record
-	links   state.Links
-	users   []tracker.User
-	rows    []board.Row
-	cursor  int
-	offset  int
-	spin    int    // spinner frame for working agents
-	spinOn  bool   // a spinner tick is scheduled
-	light   bool   // the terminal has a light background
-	filter  string // board rows narrowed to those matching it (/)
-	typing  bool   // the filter is being typed
-	width   int
-	height  int
-	updated time.Time
+	opt      Options
+	label    string // assignee shown in the header
+	issues   []tracker.Issue
+	agents   []agent.Agent
+	live     []state.Record
+	links    state.Links
+	users    []tracker.User
+	rows     []board.Row
+	cursor   int
+	offset   int
+	spin     int    // spinner frame for working agents
+	spinOn   bool   // a spinner tick is scheduled
+	light    bool   // the terminal has a light background
+	filter   string // board rows narrowed to those matching it (/)
+	poolOpen bool   // the "up for grabs" lanes show their tickets
+	typing   bool   // the filter is being typed
+	width    int
+	height   int
+	updated  time.Time
 
 	issueErr error
 	agentErr error
@@ -162,8 +164,12 @@ func New(opt Options) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.fetchAgents(), tick(m.opt.LinearPoll, issuesTick{}), tick(m.opt.ExternalPoll, agentsTick{}), m.waitHook(),
-		tea.RequestBackgroundColor)
+	cmds := []tea.Cmd{m.fetchAgents(), tick(m.opt.LinearPoll, issuesTick{}), tick(m.opt.ExternalPoll, agentsTick{}), m.waitHook(),
+		tea.RequestBackgroundColor}
+	if _, ok := m.opt.Tracker.(tracker.Pooler); ok {
+		cmds = append(cmds, m.fetchIssues()) // the tickets passed in are only the assigned ones
+	}
+	return tea.Batch(cmds...)
 }
 
 func tick(d time.Duration, msg tea.Msg) tea.Cmd {
@@ -176,7 +182,20 @@ func (m *Model) fetchIssues() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		is, err := tr.Issues(ctx, who)
-		return issuesMsg{who, is, err}
+		if p, ok := tr.(tracker.Pooler); ok && err == nil {
+			var teams []string
+			for _, i := range is {
+				if !slices.Contains(teams, i.Team) {
+					teams = append(teams, i.Team)
+				}
+			}
+			pool, perr := p.Pool(ctx, teams)
+			if perr != nil { // the assigned tickets still show; say why the pool doesn't
+				return issuesMsg{who, is, nil, fmt.Errorf("up for grabs: %w", perr)}
+			}
+			is = append(is, pool...)
+		}
+		return issuesMsg{who, is, err, nil}
 	}
 }
 
@@ -223,6 +242,9 @@ func (m *Model) rebuild() {
 	agents := slices.Clone(m.agents)
 	m.overlay(agents)
 	m.rows = filterRows(board.Build(m.issues, agents, m.links, m.stateOrder()), m.filter)
+	if !m.poolOpen && m.filter == "" { // a filter searches the pool too
+		m.rows = collapsePool(m.rows)
+	}
 	m.cursor = min(m.cursor, max(len(m.rows)-1, 0))
 }
 
@@ -279,6 +301,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.issueErr = msg.err
 		if msg.err == nil { // keep the last good data on failure
 			m.issues, m.updated = msg.issues, m.now()
+			if msg.poolErr != nil {
+				m.say("", msg.poolErr)
+			}
 			m.rebuild()
 			return m, m.detailsMoved() // the row under the cursor may have changed
 		}
@@ -337,6 +362,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.confirmLaunch(msg.plan)
 	case askMsg:
 		return m, m.gotAsk(msg)
+	case claimedMsg:
+		return m, m.claimed(msg)
 	case adoptPlanMsg:
 		return m, m.confirmAdopt(msg.plan, msg.name)
 	case suggestMsg:

@@ -129,7 +129,14 @@ func (m *Model) rowSegs(i int, st rowStats) []seg {
 	case board.UnlinkedRow:
 		return m.laneHead(rail, "UNLINKED", st.count, faint)
 	case board.StateRow:
-		return m.laneHead(rail, strings.ToUpper(r.Text), st.count, st.railS)
+		title := strings.ToUpper(r.Text)
+		if isPoolLane(r) {
+			title = "▾ " + title
+			if !m.poolOpen && m.filter == "" {
+				title = "▸ " + title[len("▾ "):]
+			}
+		}
+		return m.laneHead(rail, title, st.count, st.railS)
 	case board.TicketRow:
 		out := []seg{rail, s("  ", plainS), s(r.Issue.Key, keyS), s(" "+r.Issue.Title, plainS)}
 		if st.waiting {
@@ -257,6 +264,13 @@ func (m *Model) stats() []rowStats {
 			team, lane, rail = i, -1, ""
 		case board.StateRow:
 			lane, rail, railS = i, "┃", faint
+			if isPoolLane(r) { // count them all, also while the lane is closed
+				for _, is := range m.issues {
+					if is.Pool && team >= 0 && is.Team == m.rows[team].Text {
+						st[i].count++
+					}
+				}
+			}
 			for _, n := range m.rows[i+1:] { // the lane's color comes from its tickets' state
 				if laneHead(n.Kind) {
 					break
@@ -269,10 +283,10 @@ func (m *Model) stats() []rowStats {
 		case board.UnlinkedRow:
 			team, lane, rail, railS = -1, i, "┆", faint
 		case board.TicketRow:
-			if team >= 0 {
+			if team >= 0 && !r.Issue.Pool { // the team's count is its own tickets
 				st[team].count++
 			}
-			if lane >= 0 {
+			if lane >= 0 && !(r.Issue.Pool && isPoolLane(m.rows[lane])) {
 				st[lane].count++
 			}
 		case board.AgentRow:

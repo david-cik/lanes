@@ -248,3 +248,39 @@ func (md *modal) keyAt(y, body int) (tea.KeyPressMsg, bool) {
 	}
 	return tea.KeyPressMsg{}, false
 }
+
+// collapsePool hides the tickets in closed "up for grabs" lanes, except ones an agent
+// is already on.
+func collapsePool(rows []board.Row) []board.Row {
+	var out []board.Row
+	for i, r := range rows {
+		if r.Kind == board.TicketRow && r.Issue.Pool && (i+1 >= len(rows) || rows[i+1].Kind != board.AgentRow) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// isPoolLane reports whether row r is an "up for grabs" lane heading.
+func isPoolLane(r board.Row) bool { return r.Kind == board.StateRow && r.Text == board.PoolLane }
+
+// togglePool opens or closes the "up for grabs" lanes, keeping the cursor on the heading.
+func (m *Model) togglePool() {
+	nth := 0 // which team's pool lane the cursor is on
+	for _, r := range m.rows[:min(m.cursor+1, len(m.rows))] {
+		if isPoolLane(r) {
+			nth++
+		}
+	}
+	m.poolOpen = !m.poolOpen
+	m.rebuild()
+	for i, r := range m.rows {
+		if isPoolLane(r) {
+			if nth--; nth == 0 {
+				m.cursor = i
+				return
+			}
+		}
+	}
+}

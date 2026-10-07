@@ -29,6 +29,9 @@ type Row struct {
 	Agent *agent.Agent
 }
 
+// PoolLane is the lane, last in each team, of unassigned tickets ready to pick up.
+const PoolLane = "Up for grabs"
+
 // stateRank orders a team's workflow states; Linear's MCP exposes no position.
 var stateRank = map[string]int{"triage": 0, "backlog": 1, "unstarted": 2, "started": 3}
 
@@ -71,6 +74,7 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 	slices.SortStableFunc(sorted, func(a, b tracker.Issue) int {
 		return cmp.Or(
 			cmp.Compare(a.Team, b.Team),
+			poolLast(a, b),
 			cmp.Compare(listed(stateOrder[a.Team], a.State), listed(stateOrder[b.Team], b.State)),
 			cmp.Compare(rank(a.StateType), rank(b.StateType)),
 			cmp.Compare(a.State, b.State),
@@ -84,8 +88,8 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 		if idx == 0 || i.Team != sorted[idx-1].Team {
 			rows = append(rows, Row{Kind: TeamRow, Text: i.Team})
 		}
-		if idx == 0 || i.Team != sorted[idx-1].Team || i.State != sorted[idx-1].State {
-			rows = append(rows, Row{Kind: StateRow, Level: 1, Text: i.State})
+		if idx == 0 || i.Team != sorted[idx-1].Team || lane(*i) != lane(sorted[idx-1]) {
+			rows = append(rows, Row{Kind: StateRow, Level: 1, Text: lane(*i)})
 		}
 		rows = append(rows, Row{Kind: TicketRow, Level: 2, Text: i.Key + " " + i.Title, Issue: i})
 		for _, a := range byKey[i.Key] {
@@ -99,6 +103,24 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 		}
 	}
 	return rows
+}
+
+// lane is the board lane an issue sits in: its state, or PoolLane.
+func lane(i tracker.Issue) string {
+	if i.Pool {
+		return PoolLane
+	}
+	return i.State
+}
+
+func poolLast(a, b tracker.Issue) int {
+	switch {
+	case a.Pool == b.Pool:
+		return 0
+	case a.Pool:
+		return 1
+	}
+	return -1
 }
 
 // listed is a state's position in a configured order; unlisted states sort after.

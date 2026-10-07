@@ -112,3 +112,39 @@ func TestCursorCycleStops(t *testing.T) {
 		t.Fatalf("err=%v calls=%d", err, len(calls))
 	}
 }
+
+func TestPoolAndClaim(t *testing.T) {
+	var calls []map[string]any
+	s := fakeServer(t, map[string]string{
+		"": `{"issues":[{"id":"ABC-7","status":"Todo","statusType":"unstarted","team":"Alpha"}],"hasNextPage":false}`,
+	}, &calls)
+	s.AddTool(&mcp.Tool{Name: "save_issue", InputSchema: map[string]any{"type": "object"}},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args map[string]any
+			json.Unmarshal(req.Params.Arguments, &args)
+			calls = append(calls, args)
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: `{"id":"ABC-7"}`}}}, nil
+		})
+	s.AddTool(&mcp.Tool{Name: "list_issue_statuses", InputSchema: map[string]any{"type": "object"}},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: `[{"name":"Review","type":"started"},{"name":"Todo","type":"unstarted"},{"name":"Doing","type":"started"}]`}}}, nil
+		})
+	c := connectFake(t, s)
+	got, err := c.Pool(context.Background(), []string{"Alpha"})
+	if err != nil || len(got) != 1 || !got[0].Pool || got[0].Key != "ABC-7" {
+		t.Fatalf("pool %+v %v", got, err)
+	}
+	if a := calls[0]; a["team"] != "Alpha" || a["assignee"] != "null" || a["state"] != "unstarted" {
+		t.Fatalf("pool args %+v", a)
+	}
+	st, err := c.Claim(context.Background(), "ABC-7", "Alpha", []string{"Todo", "Doing", "Review"})
+	if err != nil || st != "Doing" {
+		t.Fatalf("claimed into %q: %v", st, err)
+	}
+	if a := calls[1]; a["id"] != "ABC-7" || a["assignee"] != "me" || a["state"] != "Doing" {
+		t.Fatalf("claim args %+v", a)
+	}
+	if st, _ := c.Claim(context.Background(), "ABC-7", "Alpha", nil); st != "Review" { // Linear's own listing order
+		t.Fatalf("without an order: %q", st)
+	}
+}

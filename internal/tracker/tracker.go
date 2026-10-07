@@ -15,6 +15,7 @@ type Issue struct {
 	StateType  string // triage|backlog|unstarted|started|completed|canceled|duplicate
 	BranchName string // tracker-suggested git branch
 	UpdatedAt  time.Time
+	Pool       bool // unassigned and not started: offered to pick up, not assigned to anyone
 }
 
 type User struct {
@@ -36,4 +37,15 @@ type Tracker interface {
 	Issues(ctx context.Context, assignee string) ([]Issue, error)
 	Issue(ctx context.Context, key string) (IssueDetail, error)
 	Users(ctx context.Context) ([]User, error)
+}
+
+// Pooler lists the unassigned, not-yet-started issues of the given teams.
+type Pooler interface {
+	Pool(ctx context.Context, teams []string) ([]Issue, error)
+}
+
+// Claimer assigns an issue to the signed-in user and moves it to the team's first
+// started state (by order, the team's states in workflow order if known), returning it.
+type Claimer interface {
+	Claim(ctx context.Context, key, team string, order []string) (string, error)
 }

@@ -98,6 +98,9 @@ func (m *Model) adapter(name string) agent.Adapter {
 func (m *Model) focusSelected() tea.Cmd {
 	r, ok := m.selected()
 	switch {
+	case ok && isPoolLane(r):
+		m.togglePool()
+		return nil
 	case ok && r.Kind == board.TicketRow:
 		return m.openTicket(*r.Issue)
 	case ok && r.Kind == board.AgentRow && r.Agent.Ended:
@@ -379,14 +382,41 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	}
 	m.notice = ""
 	tm, store := m.opt.Tmux, m.opt.Store
+	claimer, _ := m.opt.Tracker.(tracker.Claimer)
+	pooled := claimer != nil && m.isPool(p.Ticket.Key)
+	claim, team, order := pooled, p.Ticket.Team, m.stateOrder()[p.Ticket.Team]
+	claimLine := len(lines)
+	if pooled {
+		lines = append(lines, "", "")
+	}
+	setClaim := func() {
+		if !pooled {
+			return
+		}
+		lines[claimLine] = "linear:   leave it unassigned (c to claim it)"
+		if claim {
+			lines[claimLine] = "linear:   assign to you and move it to started (c to leave it)"
+		}
+	}
+	setClaim()
 	start := func() (tea.Cmd, bool) {
 		m.say("starting "+p.Adapter.Name()+" on "+p.Ticket.Key+"…", nil)
-		return func() tea.Msg {
+		run := func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			rec, err := launch.Run(ctx, p, tm, store)
 			return launchedMsg{rec: rec, err: err}
-		}, false
+		}
+		if !claim {
+			return run, false
+		}
+		key := p.Ticket.Key
+		return tea.Batch(run, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			state, err := claimer.Claim(ctx, key, team, order)
+			return claimedMsg{key: key, state: state, err: err}
+		}), false
 	}
 	acts := []action{
 		{"y", "start", start},
@@ -400,9 +430,40 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 			return cmd, m.modal != md // close this screen if no repo picker or new plan replaced it
 		}})
 	}
+	if pooled {
+		acts = append(acts, action{"c", "claim it in Linear, or not", func() (tea.Cmd, bool) {
+			claim = !claim
+			setClaim()
+			md.lines = lines
+			return nil, true
+		}})
+	}
 	md.actions = acts
 	m.modal = md
 	return nil
+}
+
+type claimedMsg struct {
+	key, state string
+	err        error
+}
+
+func (m *Model) claimed(msg claimedMsg) tea.Cmd {
+	if msg.err != nil {
+		m.say("", fmt.Errorf("couldn't claim %s in Linear: %w", msg.key, msg.err))
+		return nil
+	}
+	m.say(fmt.Sprintf("claimed %s: assigned to you, %s", msg.key, msg.state), nil)
+	return m.fetchIssues()
+}
+
+func (m *Model) isPool(key string) bool {
+	for _, i := range m.issues {
+		if i.Key == key {
+			return i.Pool
+		}
+	}
+	return false
 }
 
 func (m *Model) launched(msg launchedMsg) tea.Cmd {
