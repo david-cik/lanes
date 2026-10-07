@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -85,7 +86,9 @@ func (m *Model) header() string {
 	left := []seg{s("▐", accentS), s("lanes", badgeS), s("▌", accentS), s("  "+m.label, bold),
 		s(fmt.Sprintf(" · %d tickets", len(m.issues)), faint)}
 	var work, idle int
-	for _, a := range m.agents {
+	agents := slices.Clone(m.agents)
+	m.overlay(agents) // hook status, as on the rows
+	for _, a := range agents {
 		switch {
 		case a.Ended:
 		case a.Status == agent.Working:
@@ -255,6 +258,9 @@ func (m *Model) stats() []rowStats {
 		case board.StateRow:
 			lane, rail, railS = i, "┃", faint
 			for _, n := range m.rows[i+1:] { // the lane's color comes from its tickets' state
+				if laneHead(n.Kind) {
+					break
+				}
 				if n.Kind == board.TicketRow {
 					railS = laneStyle(n.Issue.StateType)
 					break
