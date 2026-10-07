@@ -115,6 +115,31 @@ func Match(all []Session, query string) []Session {
 	return out
 }
 
+// Lookup finds one session's transcript by id or id prefix without scanning every
+// session (fast path for lanes link / unlink).
+func Lookup(ref string, store state.Store) (Session, error) {
+	if len(ref) < 4 || strings.ContainsAny(ref, "/*?[") {
+		return Session{}, fmt.Errorf("session id %q is too short or not an id (use at least 4 characters)", ref)
+	}
+	paths, _ := filepath.Glob(filepath.Join(configDir(), "projects", "*", ref+"*.jsonl"))
+	ids := map[string]string{}
+	for _, p := range paths {
+		ids[strings.TrimSuffix(filepath.Base(p), ".jsonl")] = p
+	}
+	switch len(ids) {
+	case 0:
+		return Session{}, fmt.Errorf("no session matches %q (lanes sessions lists them)", ref)
+	case 1:
+	default:
+		return Session{}, fmt.Errorf("%q matches %d sessions; use more of the id", ref, len(ids))
+	}
+	for id, p := range ids {
+		in, _ := suggest.SessionInfo(p)
+		return Session{ID: id, Title: in.Title, Cwd: in.Cwd, When: in.When}, nil
+	}
+	return Session{}, nil
+}
+
 // Resolve finds one session by id or id prefix (at least 4 characters).
 func Resolve(all []Session, ref string) (Session, error) {
 	if len(ref) < 4 {

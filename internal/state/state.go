@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -162,35 +163,78 @@ func writeAtomic(path string, b []byte) error {
 	return os.Rename(f.Name(), path)
 }
 
+// locked runs fn holding an exclusive lock on the state dir, so the lanes CLI and the
+// panel can't interleave read-modify-write updates.
+func (s Store) locked(fn func() error) error {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(s.Dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return fn()
+}
+
+// editLinks applies change to the links on disk under the lock.
+func (s Store) editLinks(change func(Links) bool) (Links, error) {
+	var out Links
+	err := s.locked(func() error {
+		l, err := s.Links()
+		if err != nil {
+			return err
+		}
+		out = l
+		if !change(l) {
+			return nil
+		}
+		return s.SaveLinks(l)
+	})
+	return out, err
+}
+
 // SetLink changes one link, re-reading the file first so changes made meanwhile by
 // another process (the lanes CLI, the panel) aren't lost.
 func (s Store) SetLink(key, ticket string) (Links, error) {
-	l, err := s.Links()
-	if err != nil {
-		return nil, err
-	}
-	l[key] = ticket
-	return l, s.SaveLinks(l)
+	return s.editLinks(func(l Links) bool { l[key] = ticket; return true })
+}
+
+// SetLinkIfAbsent sets a link only if the session has none yet (not even a removal).
+func (s Store) SetLinkIfAbsent(key, ticket string) (Links, bool, error) {
+	set := false
+	l, err := s.editLinks(func(l Links) bool {
+		if _, ok := l[key]; ok {
+			return false
+		}
+		l[key], set = ticket, true
+		return true
+	})
+	return l, set, err
 }
 
 // DeleteLink removes one link, re-reading the file first (see SetLink).
 func (s Store) DeleteLink(key string) (Links, error) {
-	l, err := s.Links()
-	if err != nil {
-		return nil, err
-	}
-	delete(l, key)
-	return l, s.SaveLinks(l)
+	return s.editLinks(func(l Links) bool { delete(l, key); return true })
 }
 
 // SetRecordTicket changes the ticket of a launched agent's record on disk.
 func (s Store) SetRecordTicket(id, ticket string) (Record, error) {
-	recs, _ := s.All()
-	for _, r := range recs {
-		if r.ID == id {
-			r.TicketKey = ticket
-			return r, s.Save(r)
+	var out Record
+	err := s.locked(func() error {
+		recs, _ := s.All()
+		for _, r := range recs {
+			if r.ID == id {
+				r.TicketKey = ticket
+				out = r
+				return s.Save(r)
+			}
 		}
-	}
-	return Record{}, fmt.Errorf("no launched agent %s", id)
+		return fmt.Errorf("no launched agent %s", id)
+	})
+	return out, err
 }

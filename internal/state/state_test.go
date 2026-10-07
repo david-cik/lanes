@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,5 +70,28 @@ func TestLinks(t *testing.T) {
 func TestNewIDUnique(t *testing.T) {
 	if a, b := NewID(), NewID(); a == b || len(a) != 8 {
 		t.Fatalf("%q %q", a, b)
+	}
+}
+
+func TestLinkEditsUnderLock(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	done := make(chan bool)
+	for i := range 20 {
+		go func() {
+			s.SetLink(LinkKey("claude", fmt.Sprint(i)), "ABC-1")
+			done <- true
+		}()
+	}
+	for range 20 {
+		<-done
+	}
+	if l, _ := s.Links(); len(l) != 20 {
+		t.Fatalf("lost concurrent edits: %d of 20", len(l))
+	}
+	if _, set, _ := s.SetLinkIfAbsent("claude:0", "ABC-2"); set {
+		t.Fatal("overwrote an existing link")
+	}
+	if _, set, _ := s.SetLinkIfAbsent("claude:new", "ABC-2"); !set {
+		t.Fatal("didn't set an absent link")
 	}
 }

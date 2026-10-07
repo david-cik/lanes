@@ -240,7 +240,14 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 	if _, set := m.links[k]; set { // linked, or unlinked on purpose, meanwhile
 		return
 	}
-	err := m.setLink(k, msg.res[0].Key)
+	l, set, err := m.opt.Store.SetLinkIfAbsent(k, msg.res[0].Key) // re-checked on disk
+	if err == nil {
+		m.links = l
+	}
+	if !set && err == nil {
+		m.rebuild()
+		return
+	}
 	m.rebuild()
 	m.say(fmt.Sprintf("auto-linked %s → %s (l changes it)", msg.name, msg.res[0].Key), err)
 }

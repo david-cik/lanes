@@ -62,3 +62,19 @@ func TestListMatchResolveLink(t *testing.T) {
 		t.Fatal("bad ticket accepted")
 	}
 }
+
+func TestLookup(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	write(t, cfg, "abcd1111", `{"type":"ai-title","aiTitle":"one"}`+"\n", time.Hour)
+	write(t, cfg, "abcd2222", `{"type":"ai-title","aiTitle":"two"}`+"\n", 90*24*time.Hour)
+	if _, err := Lookup("abcd", state.Store{}); err == nil {
+		t.Fatal("ambiguous prefix accepted")
+	}
+	if s, err := Lookup("abcd2", state.Store{}); err != nil || s.Title != "two" {
+		t.Fatalf("%+v %v", s, err)
+	}
+	if _, err := Lookup("ab*", state.Store{}); err == nil {
+		t.Fatal("glob accepted")
+	}
+}

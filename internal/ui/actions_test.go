@@ -445,6 +445,9 @@ func TestLinkMadeOutsidePanelShowsOnRefresh(t *testing.T) {
 }
 
 func TestAskProposesThenLinksOnConfirm(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	endedTranscript(t, cfg, "x9", "/src", "outside work")
 	m, _ := controlModel(t)
 	var gotPrompt string
 	m.readers.Ask = func(_ context.Context, system, prompt string) (string, error) {
@@ -477,5 +480,25 @@ func TestAskQuestionAndGarbage(t *testing.T) {
 	}
 	if r := parseAsk("no json here"); r.err == nil {
 		t.Fatal("garbage accepted")
+	}
+}
+
+func TestAskRejectsUnknownSession(t *testing.T) {
+	m, _ := controlModel(t)
+	m.Update(askMsg{session: "made-up", ticket: "ABC-1", known: map[string]string{"x9": "outside"}})
+	if m.modal != nil || !strings.Contains(m.notice, "isn't one of your recent sessions") {
+		t.Fatalf("notice %q modal %+v", m.notice, m.modal)
+	}
+}
+
+func TestAskTakeOff(t *testing.T) {
+	m, _ := controlModel(t)
+	m.Update(askMsg{session: "x9", ticket: "-", reason: "not ticket work", known: map[string]string{"x9": "outside work"}})
+	if m.modal == nil || m.modal.title != "Take outside off its ticket?" {
+		t.Fatalf("confirm %+v", m.modal)
+	}
+	m.Update(key("y"))
+	if l, _ := m.opt.Store.Links(); l["claude:x9"] != "-" {
+		t.Fatalf("links %v", l)
 	}
 }

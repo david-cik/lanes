@@ -30,6 +30,7 @@ If the request is ambiguous or nothing fits, reply {"question":"<what you need t
 type askMsg struct {
 	session, ticket, reason, question string
 	err                               error
+	known                             map[string]string // session ids Claude was shown → title
 }
 
 // ask is "/": describe the session and the ticket in your own words; Claude proposes
@@ -71,7 +72,12 @@ func (m *Model) askClaude(request string) tea.Cmd {
 		if err != nil {
 			return askMsg{err: err}
 		}
-		return parseAsk(out)
+		r := parseAsk(out)
+		r.known = map[string]string{}
+		for _, s := range list {
+			r.known[s.ID] = s.Title
+		}
+		return r
 	}
 }
 
@@ -99,7 +105,14 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 		m.say("", fmt.Errorf("Claude didn't name a session and a ticket"))
 		return nil
 	}
-	name := msg.session[:min(8, len(msg.session))]
+	name, ok := msg.known[msg.session]
+	if !ok { // the answer is untrusted: only sessions we showed it
+		m.say("", fmt.Errorf("Claude named session %q, which isn't one of your recent sessions", msg.session))
+		return nil
+	}
+	if name == "" {
+		name = msg.session[:min(8, len(msg.session))]
+	}
 	for _, a := range m.agents {
 		if a.ID == msg.session && a.Name != "" {
 			name = a.Name

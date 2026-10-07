@@ -226,16 +226,14 @@ func sessionsCommand(cmd string, args []string) error {
 	store := state.Store{Dir: stateDir}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	running, _ := claude.New().List(ctx)
-	look := *days
-	if cmd != "sessions" {
-		look = max(look, 30)
-	}
-	all := sessions.List(running, look, store)
 	switch cmd {
 	case "sessions":
-		found := sessions.Match(all, strings.Join(fs.Args(), " "))
+		running, _ := claude.New().List(ctx)
+		found := sessions.Match(sessions.List(running, *days, store), strings.Join(fs.Args(), " "))
 		if *asJSON {
+			if found == nil {
+				found = []sessions.Session{}
+			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			return enc.Encode(found)
@@ -246,10 +244,13 @@ func sessionsCommand(cmd string, args []string) error {
 				state = "running"
 			}
 			ticket := s.Ticket
-			if ticket == "" {
+			switch ticket {
+			case "":
 				ticket = "no ticket"
+			case "-":
+				ticket = "kept off tickets"
 			}
-			fmt.Printf("%s  %-7s  %s  %s  [%s]\n", s.ID[:8], state, s.When.Format("Jan 02 15:04"), s.Title, ticket)
+			fmt.Printf("%s  %-7s  %s  %s  [%s]\n", short(s.ID), state, s.When.Format("Jan 02 15:04"), s.Title, ticket)
 			fmt.Printf("          %s", s.Cwd)
 			if len(s.Mentions) > 0 {
 				fmt.Printf(" · mentions %s", strings.Join(s.Mentions, ", "))
@@ -268,7 +269,7 @@ func sessionsCommand(cmd string, args []string) error {
 		if fs.NArg() != want {
 			return fmt.Errorf("usage: lanes link <session-id> <TICKET> | lanes unlink <session-id>")
 		}
-		s, err := sessions.Resolve(all, fs.Arg(0))
+		s, err := sessions.Lookup(fs.Arg(0), store)
 		if err != nil {
 			return err
 		}
@@ -280,13 +281,15 @@ func sessionsCommand(cmd string, args []string) error {
 			return err
 		}
 		if cmd == "link" {
-			fmt.Printf("linked %s (%s) to %s\n", s.ID[:8], s.Title, strings.ToUpper(ticket))
+			fmt.Printf("linked %s (%s) to %s\n", short(s.ID), s.Title, strings.ToUpper(ticket))
 		} else {
-			fmt.Printf("took %s (%s) off its ticket\n", s.ID[:8], s.Title)
+			fmt.Printf("took %s (%s) off its ticket\n", short(s.ID), s.Title)
 		}
 	}
 	return nil
 }
+
+func short(id string) string { return id[:min(8, len(id))] }
 
 func hooksCommand(uninstall bool, args []string) error {
 	fs := flag.NewFlagSet("hooks", flag.ExitOnError)
