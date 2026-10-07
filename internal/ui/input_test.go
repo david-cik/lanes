@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -135,5 +136,84 @@ func TestAdoptedOriginalIsHidden(t *testing.T) {
 	m.Update(agentsMsg{seq: m.agentSeq + 1, agents: snap.agents, live: snap.live})
 	if v := view(m); strings.Contains(v, "outside") || !strings.Contains(v, "one") {
 		t.Fatalf("adopted original still shown:\n%s", v)
+	}
+}
+
+func TestModalTextWrapsAndClicksStillLandOnItems(t *testing.T) {
+	m, _ := controlModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 30, Height: 20})
+	picked := ""
+	m.modal = &modal{title: "a long title that cannot fit in thirty columns at all",
+		lines:    []string{"and a reason that also runs well past the panel's edge"},
+		items:    []choice{{"first", "1"}, {"second", "2"}},
+		onChoose: func(c choice) tea.Cmd { picked = c.value; return nil }}
+	v := view(m)
+	if !strings.Contains(v, "at all") || !strings.Contains(v, "edge") {
+		t.Fatalf("not wrapped:\n%s", v)
+	}
+	click(m, 4, rowY(t, m, "second"))
+	if picked != "2" {
+		t.Fatalf("picked %q", picked)
+	}
+}
+
+func TestAskKnowsTheSelectedTicketAndProposesSeveralLinks(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	endedTranscript(t, cfg, "x9", "/src", "outside work")
+	endedTranscript(t, cfg, "y8", "/src", "older work")
+	m, _ := controlModel(t)
+	var prompt string
+	m.readers.Ask = func(_ context.Context, _, p string) (string, error) {
+		prompt = p
+		return `{"links":[{"session":"x9","ticket":"ABC-1","reason":"same bug"},{"session":"y8","ticket":"ABC-1","reason":"earlier try"},{"session":"y8","ticket":"ABC-1","reason":"again"}]}`, nil
+	}
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(key(":"))
+	if !strings.Contains(m.modal.title, "about ABC-1") {
+		t.Fatalf("title %q", m.modal.title)
+	}
+	for _, r := range "find my old sessions for this ticket" {
+		m.Update(key(string(r)))
+	}
+	_, cmd := m.Update(key("enter"))
+	m.Update(cmd())
+	if !strings.Contains(prompt, `"selected_ticket":{"Key":"ABC-1"`) {
+		t.Fatalf("prompt lacks the selected ticket: %s", prompt)
+	}
+	if m.modal == nil || m.modal.title != "Make these 2 changes?" || !strings.Contains(strings.Join(m.modal.lines, " "), "1 more already") {
+		t.Fatalf("confirm %+v", m.modal)
+	}
+	m.Update(key("y"))
+	if l, _ := m.opt.Store.Links(); l["claude:x9"] != "ABC-1" || l["claude:y8"] != "ABC-1" {
+		t.Fatalf("links %v", l)
+	}
+}
+
+func TestAskInformationalAnswer(t *testing.T) {
+	m, _ := controlModel(t)
+	m.Update(askMsg{answer: "You have no sessions about ABC-1 yet.", request: "any sessions?"})
+	if m.modal == nil || !strings.Contains(strings.Join(m.modal.lines, " "), "no sessions about ABC-1") {
+		t.Fatalf("answer %+v", m.modal)
+	}
+	m.Update(key("enter"))
+	if m.modal != nil {
+		t.Fatal("enter didn't close the answer")
+	}
+}
+
+func TestAskNothingToChange(t *testing.T) {
+	m, _ := controlModel(t)
+	m.Update(askMsg{links: []askLink{{"x9", "ABC-1", "it's there"}}, known: map[string]string{"x9": "outside"},
+		current: map[string]string{"x9": "ABC-1"}})
+	if m.modal != nil || !strings.Contains(m.notice, "already there") {
+		t.Fatalf("modal %+v notice %q", m.modal, m.notice)
+	}
+}
+
+func TestWrapKeepsIndent(t *testing.T) {
+	got := wrap("  a reason long enough to need a second line here", 24)
+	if len(got) < 2 || !strings.HasPrefix(got[1], "  ") {
+		t.Fatalf("%q", got)
 	}
 }

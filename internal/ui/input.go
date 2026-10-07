@@ -160,7 +160,7 @@ func (m *Model) click(ms tea.Mouse) tea.Cmd {
 		return nil
 	}
 	if m.modal != nil {
-		if k, ok := m.modal.keyAt(ms.Y-1, max(m.height-2, 1)); ok {
+		if k, ok := m.modal.keyAt(ms.Y-1, m.width, max(m.height-2, 1)); ok {
 			_, cmd := m.Update(k)
 			return cmd
 		}
@@ -226,8 +226,9 @@ func keyOf(k string) tea.KeyPressMsg {
 
 // keyAt maps a click on line y of a modal (0 = its title) to the key that does the
 // same: a list item (after selecting it), an action, or confirm's yes / no.
-func (md *modal) keyAt(y, body int) (tea.KeyPressMsg, bool) {
-	y -= 1 + len(md.lines)
+func (md *modal) keyAt(y, width, body int) (tea.KeyPressMsg, bool) {
+	head := len(md.head(width))
+	y -= head
 	switch {
 	case y < 0 || md.input:
 	case md.actions != nil:
@@ -241,7 +242,7 @@ func (md *modal) keyAt(y, body int) (tea.KeyPressMsg, bool) {
 	default:
 		y-- // the filter line
 		vis := md.visible()
-		room := max(body-(2+len(md.lines)), 1)
+		room := max(body-(head+1), 1)
 		if i := max(md.pick-room+1, 0) + y; y >= 0 && y < room && i < len(vis) {
 			md.pick = i
 			return keyOf("enter"), true

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type choice struct{ label, value string }
@@ -120,13 +121,41 @@ func (md *modal) help() string {
 	return "type to filter · ↑/↓ · enter select · esc cancel"
 }
 
-func (md *modal) view(b *strings.Builder, width, body int) {
-	b.WriteString(accentS.Render(trunc(md.title, width)) + "\n")
-	used := 1
+// head is the modal's title and text, wrapped to width: what view draws above the
+// choices, and what keyAt counts to find them.
+func (md *modal) head(width int) []string {
+	out := wrap(accentS.Render(md.title), width)
 	for _, l := range md.lines {
-		b.WriteString(trunc(l, width) + "\n")
-		used++
+		out = append(out, wrap(l, width)...)
 	}
+	return out
+}
+
+// wrap breaks text (styles allowed) into lines of at most width columns; lines after
+// the first keep the text's own indent.
+func wrap(s string, width int) []string {
+	plain := ansi.Strip(s)
+	ind := plain[:len(plain)-len(strings.TrimLeft(plain, " "))]
+	if width <= len(ind)+10 {
+		return []string{s}
+	}
+	out := strings.Split(ansi.Wrap(s, width, ""), "\n")
+	if ind == "" || len(out) == 1 {
+		return out
+	}
+	rest := strings.Split(ansi.Wrap(strings.Join(out[1:], " "), width-len(ind), ""), "\n")
+	for i := range rest {
+		rest[i] = ind + strings.TrimLeft(rest[i], " ")
+	}
+	return append(out[:1], rest...)
+}
+
+func (md *modal) view(b *strings.Builder, width, body int) {
+	head := md.head(width)
+	for _, l := range head {
+		b.WriteString(l + "\n")
+	}
+	used := len(head)
 	switch {
 	case md.actions != nil:
 		for _, a := range md.actions {
@@ -137,8 +166,9 @@ func (md *modal) view(b *strings.Builder, width, body int) {
 		b.WriteString(fmt.Sprintf("  %-4s %s\n  %-4s %s\n", "y", "yes", "n", "no"))
 		used += 2
 	case md.input:
-		b.WriteString("> " + md.text + "▏\n")
-		used++
+		in := wrap("> "+md.text+"▏", width)
+		b.WriteString(strings.Join(in, "\n") + "\n")
+		used += len(in)
 	default:
 		b.WriteString("filter: " + md.filter + "▏\n")
 		used++
