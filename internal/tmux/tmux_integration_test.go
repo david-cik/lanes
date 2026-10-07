@@ -152,3 +152,21 @@ func TestSessionOptionsAndFocusBinding(t *testing.T) {
 		t.Fatal("unbind failed")
 	}
 }
+
+func TestSessionOptRoundTripsQuotedValues(t *testing.T) {
+	c := server(t)
+	p, err := c.NewSession("s", t.TempDir(), nil, sleeper("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `#[fg=red]%H:%M "q" it's`
+	c.SetSessionOpt(p, "status-right", want)
+	got, set := c.SessionOpt(p, "status-right")
+	if !set || got != want {
+		t.Fatalf("got %q set=%v", got, set)
+	}
+	c.SetSessionOpt(p, "status-right", got) // restoring must not add quotes
+	if again, _ := c.SessionOpt(p, "status-right"); again != want {
+		t.Fatalf("after restore %q", again)
+	}
+}

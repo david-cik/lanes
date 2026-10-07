@@ -150,11 +150,10 @@ func (c Client) SessionOf(pane string) (string, error) {
 // on that session (rather than inherited from the global value). Targeting a pane id
 // avoids session-name matching surprises.
 func (c Client) SessionOpt(pane, key string) (string, bool) {
-	out, err := c.run("show-options", "-t", pane, key)
-	if err != nil || out == "" {
+	if out, err := c.run("show-options", "-t", pane, key); err != nil || out == "" {
 		return "", false
 	}
-	_, v, _ := strings.Cut(out, " ")
+	v, _ := c.run("show-options", "-v", "-t", pane, key) // -v: raw, unquoted value
 	return v, true
 }
 
