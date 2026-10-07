@@ -37,7 +37,8 @@ func newModel() (*Model, *fakeTracker) {
 	return m, ft
 }
 
-func view(m *Model) string { return m.View().Content }
+// view is the screen as plain text (styles stripped), what a user reads.
+func view(m *Model) string { return ansiRe.ReplaceAllString(m.View().Content, "") }
 
 func TestAgentsNestUnderTicket(t *testing.T) {
 	m, _ := newModel()
@@ -46,7 +47,7 @@ func TestAgentsNestUnderTicket(t *testing.T) {
 			Since: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
 	}})
 	v := view(m)
-	ticket, ag := strings.Index(v, "ABC-1 fix it"), strings.Index(v, "● claude impl working 1h · abc-1-fix-it (ro)")
+	ticket, ag := strings.Index(v, "ABC-1 fix it"), strings.Index(v, "└ ● impl  working 1h · abc-1-fix-it  external")
 	if ticket < 0 || ag < ticket {
 		t.Fatalf("agent not under ticket:\n%s", v)
 	}
@@ -91,7 +92,7 @@ func TestAssigneePicker(t *testing.T) {
 	m.Update(key("down")) // past "me" to Grace
 	_, cmd = m.Update(key("enter"))
 	cmd()
-	if len(ft.calls) != 1 || ft.calls[0] != "u2" || !strings.Contains(view(m), "lanes · Grace") {
+	if len(ft.calls) != 1 || ft.calls[0] != "u2" || !strings.Contains(view(m), "  Grace · ") {
 		t.Fatalf("calls=%v view:\n%s", ft.calls, view(m))
 	}
 }
@@ -140,4 +141,16 @@ func keyName(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyTab}
 	}
 	return key(s)
+}
+
+func TestAgentNameDropsRepeatedTicketKey(t *testing.T) {
+	m, _ := newModel()
+	m.Update(agentsMsg{agents: []agent.Agent{
+		{Tool: "claude", Name: "ABC-1 fix-the-thing", Branch: "abc-1-x", Status: agent.Idle},
+		{Tool: "claude", Name: "ABC-1", Branch: "abc-1-y", Status: agent.Idle},
+	}})
+	v := view(m)
+	if !strings.Contains(v, "○ fix-the-thing  idle") || !strings.Contains(v, "○ agent  idle") || strings.Contains(v, "○ ABC-1") {
+		t.Fatalf("view:\n%s", v)
+	}
 }

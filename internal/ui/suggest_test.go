@@ -172,7 +172,7 @@ func TestEndedLinkedSessionsShowAndResume(t *testing.T) {
 	snap.agents = []agent.Agent{snap.agents[2], ended[0]} // no lanes agents on ABC-1 now
 	snap.live = nil
 	m.Update(agentsMsg{seq: 99, agents: snap.agents})
-	if v := view(m); !strings.Contains(v, "· claude Fix the login redirect done") || !strings.Contains(v, "ended — enter or A resumes") {
+	if v := view(m); !strings.Contains(v, "· Fix the login redirect  done") || !strings.Contains(v, "ended · enter resumes") {
 		t.Fatalf("view:\n%s", v)
 	}
 	// enter on the ticket offers: new agent, or resume the ended session

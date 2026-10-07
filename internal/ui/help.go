@@ -9,7 +9,9 @@ import (
 )
 
 // footer lists only the keys that do something for the selected row; ? lists them all.
-func (m *Model) footer() string {
+func (m *Model) footer() string { return strings.Join(m.footerItems(), " · ") }
+
+func (m *Model) footerItems() []string {
 	var keys []string
 	if m.waitingCount() > 0 {
 		keys = append(keys, "a approve")
@@ -27,17 +29,10 @@ func (m *Model) footer() string {
 		keys = append(keys, "A adopt", "l ticket", "d details")
 	}
 	if m.opt.FocusLabel != "" {
-		keys = append(keys, m.opt.FocusLabel)
+		keys = append(keys, focusItem(m.opt.FocusLabel))
 	}
 	keys = append(keys, "? keys") // q quit and the rest are in ?
-	out := ""
-	for i, k := range keys {
-		if i > 0 {
-			out += " · "
-		}
-		out += k
-	}
-	return out
+	return keys
 }
 
 var helpLines = []string{
@@ -84,4 +79,9 @@ func (m *Model) showHelp() {
 	m.modal = &modal{title: "Keys", lines: lines, actions: []action{
 		{"?", "close", closeHelp}, {"q", "close", closeHelp}, {"enter", "close", closeHelp},
 	}}
+}
+
+// focusItem turns "Ctrl-b ←/→" into a footer item whose key part has no spaces.
+func focusItem(label string) string {
+	return strings.Replace(label, " ", "+", 1) + " panes"
 }

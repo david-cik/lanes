@@ -407,14 +407,7 @@ var (
 
 func (m *Model) View() tea.View {
 	var b strings.Builder
-	header := fmt.Sprintf("lanes · %s · %d tickets · %d agents · updated %s",
-		m.label, len(m.issues), len(m.agents), m.updated.Format("15:04:05"))
-	if n := m.waitingCount(); n > 0 { // first, so a narrow panel never cuts it off
-		w := fmt.Sprintf("⚠ %d waiting (a) · ", n)
-		b.WriteString(waitS.Render(trunc(w, m.width)) + bold.Render(trunc(header, max(m.width-len([]rune(w)), 1))) + "\n")
-	} else {
-		b.WriteString(bold.Render(trunc(header, m.width)) + "\n")
-	}
+	b.WriteString(m.header() + "\n")
 
 	body := max(m.height-2, 1)
 	switch {
@@ -430,7 +423,7 @@ func (m *Model) View() tea.View {
 		if boardH > 0 {
 			m.viewBoard(&b, boardH)
 		}
-		b.WriteString(faint.Render(trunc("── details (d hides · o opens · r refreshes) "+strings.Repeat("─", m.width), m.width)) + "\n")
+		b.WriteString(line(m.width, s("▍", accentS), s(" details", bold), s("   d hides · o opens · r refreshes", faint)) + "\n")
 		m.viewDetails(&b, body-boardH-1)
 	default:
 		m.viewBoard(&b, body)
@@ -450,9 +443,9 @@ func (m *Model) View() tea.View {
 	case m.modal != nil:
 		b.WriteString(faint.Render(trunc(m.modal.help(), m.width)))
 	case m.opt.Tmux == nil:
-		b.WriteString(faint.Render(trunc("j/k move · d details · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)", m.width)))
+		b.WriteString(m.footerLine([]string{"d details", "l ticket", "L suggest", "u assignee", "? keys", "· read-only (start lanes in tmux to launch agents)"}))
 	default:
-		b.WriteString(faint.Render(trunc(m.footer(), m.width)))
+		b.WriteString(m.footerLine(m.footerItems()))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true
@@ -472,63 +465,16 @@ func (m *Model) viewBoard(b *strings.Builder, body int) {
 		m.offset = m.cursor - body + 1
 	}
 	end := min(m.offset+body, len(m.rows))
+	stats := m.stats()
 	for i := m.offset; i < end; i++ {
-		line := trunc(m.line(m.rows[i]), m.width)
+		parts := m.rowSegs(i, stats[i])
 		if i == m.cursor {
-			line = sel.Render(line)
+			b.WriteString(sel.Render(plainLine(m.width, parts...)) + "\n")
 		} else {
-			line = m.style(m.rows[i]).Render(line)
+			b.WriteString(line(m.width, parts...) + "\n")
 		}
-		b.WriteString(line + "\n")
 	}
 	b.WriteString(strings.Repeat("\n", body-(end-m.offset)))
-}
-
-func (m *Model) style(r board.Row) lipgloss.Style {
-	switch r.Kind {
-	case board.TeamRow, board.UnlinkedRow:
-		return bold
-	case board.StateRow:
-		return stateS
-	case board.AgentRow:
-		switch r.Agent.Status {
-		case agent.Working:
-			return workS
-		case agent.Waiting:
-			return waitS
-		}
-		return faint
-	}
-	return lipgloss.NewStyle()
-}
-
-func (m *Model) line(r board.Row) string {
-	ind := strings.Repeat("  ", r.Level)
-	switch r.Kind {
-	case board.StateRow:
-		return ind + "── " + r.Text + " ──"
-	case board.AgentRow:
-		a := r.Agent
-		s := fmt.Sprintf("%s%s %s %s %-7s %s", ind, glyph(a.Status), a.Tool, a.Name, a.Status, age(m.now().Sub(a.Since)))
-		s += m.waitingNote(a)
-		if a.Branch != "" && a.Branch != a.Name {
-			s += " · " + a.Branch
-		}
-		if r.Level == 1 { // unlinked: show where it runs
-			s += " · " + home(a.Cwd)
-		}
-		switch {
-		case a.Ended:
-			s += " · ended — enter or A resumes"
-		case a.External:
-			s += " (ro)"
-		}
-		if a.RecordID != "" && a.RecordID == m.shown {
-			s += " ◀"
-		}
-		return s
-	}
-	return ind + r.Text
 }
 
 func glyph(s agent.Status) string {

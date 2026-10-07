@@ -186,7 +186,7 @@ var (
 	okC   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	badC  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	pendC = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	sect  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	sect  = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
 )
 
 func (m *Model) viewDetails(b *strings.Builder, height int) {

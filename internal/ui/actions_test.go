@@ -94,8 +94,9 @@ func (f *fleetSnap) Snapshot(context.Context) ([]agent.Agent, []state.Record, er
 
 func (m *Model) cursorTo(t *testing.T, text string) {
 	t.Helper()
+	stats := m.stats()
 	for i := range m.rows {
-		if strings.Contains(m.line(m.rows[i]), text) {
+		if strings.Contains(plainLine(1000, m.rowSegs(i, stats[i])...), text) {
 			m.cursor = i
 			return
 		}
@@ -380,13 +381,13 @@ func TestRemoveLaunchedAgentFromTicket(t *testing.T) {
 		t.Fatalf("removed agent is called %q in messages", who)
 	}
 	v := view(m)
-	if i, j := strings.Index(v, "Unlinked"), strings.Index(v, "claude one"); i < 0 || j < i {
+	if i, j := strings.Index(v, "Unlinked"), strings.Index(v, " one  "); i < 0 || j < i {
 		t.Fatalf("launched agent not moved to Unlinked:\n%s", v)
 	}
 	// and onto another ticket
 	m.issues = append(m.issues, tracker.Issue{Key: "ABC-2", Title: "two", Team: "Alpha", State: "Todo", StateType: "unstarted"})
 	m.rebuild()
-	m.cursorTo(t, "claude one")
+	m.cursorTo(t, " one  ")
 	m.Update(key("l"))
 	for i, c := range m.modal.items {
 		if strings.HasPrefix(c.label, "ABC-2") {
@@ -404,7 +405,7 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 	m.opt.FocusLabel = "Ctrl-b ←/→"
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	m.cursorTo(t, "one")
-	if f := m.footer(); !strings.Contains(f, "x stop") || !strings.Contains(f, "? keys") || len([]rune(f)) > 80 {
+	if f := m.footer(); !strings.Contains(f, "x stop") || !strings.Contains(f, "Ctrl-b+←/→ panes") || !strings.Contains(f, "? keys") || len([]rune(f)) > 80 {
 		t.Fatalf("agent footer %q (%d)", f, len([]rune(f)))
 	}
 	m.cursorTo(t, "ABC-1 fix it")

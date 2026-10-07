@@ -73,7 +73,7 @@ func TestDetailsForAgent(t *testing.T) {
 	_, cmd := m.Update(key("d"))
 	settle(m, cmd)
 	v := view(m)
-	for _, want := range []string{"── details", "abc-1/x", "↑3 ↓0 vs origin/main", "2 uncommitted", "last: fix: guard nil",
+	for _, want := range []string{"▍ details", "abc-1/x", "↑3 ↓0 vs origin/main", "2 uncommitted", "last: fix: guard nil",
 		"#41 open", "approved", "✓12", "✗1", "…2", "failing: lint", "recent"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("details missing %q:\n%s", want, v)
@@ -171,7 +171,7 @@ func TestDetailsOnShortPanelTakeWholeBody(t *testing.T) {
 	_, cmd := m.Update(key("d"))
 	settle(m, cmd)
 	v := view(m)
-	if strings.Contains(v, "ABC-1 fix it") || !strings.Contains(v, "── details") {
+	if strings.Contains(v, "ABC-1 fix it") || !strings.Contains(v, "▍ details") {
 		t.Fatalf("short panel should show details only:\n%s", v)
 	}
 	_ = agent.Working

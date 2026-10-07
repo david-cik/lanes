@@ -75,7 +75,7 @@ func TestPermissionShowsOnRowAndHeader(t *testing.T) {
 	m, _, notes := hookModel(t)
 	permission(m, 1, "r1")
 	v := view(m)
-	if !strings.Contains(v, "⚠ claude one waiting") || !strings.Contains(v, "Bash: date > probe.txt") || !strings.Contains(v, "⚠ 1 waiting (a)") {
+	if !strings.Contains(v, "⚠ one  waiting") || !strings.Contains(v, "Bash: date > probe.txt") || !strings.Contains(v, "⚠ 1 waiting · a") || !strings.Contains(v, "ABC-1 fix it  ⚠") {
 		t.Fatalf("view:\n%s", v)
 	}
 	if len(*notes) != 1 || !strings.Contains((*notes)[0], "ABC-1 needs you") {
@@ -165,7 +165,7 @@ func TestAnsweredInPaneClearsOnProgress(t *testing.T) {
 	if m.waitingCount() != 0 || *out == nil || len(*out) != 0 {
 		t.Fatalf("pending not released with an empty reply: %q", *out)
 	}
-	if !strings.Contains(view(m), "● claude one working") {
+	if !strings.Contains(view(m), "● one  working") {
 		t.Fatalf("view:\n%s", view(m))
 	}
 }
@@ -295,7 +295,7 @@ func TestExternalSessionReportsThroughGlobalHooks(t *testing.T) {
 	m, _, notes := hookModel(t)
 	out := permission(m, 1, "claude:x9") // the "outside" session, id x9
 	v := view(m)
-	if !strings.Contains(v, "⚠ claude outside waiting") || !strings.Contains(v, "Bash: date > probe.txt") || len(*notes) != 1 {
+	if !strings.Contains(v, "⚠ outside  waiting") || !strings.Contains(v, "Bash: date > probe.txt") || len(*notes) != 1 {
 		t.Fatalf("view:\n%s\nnotes %v", v, *notes)
 	}
 	m.Update(agentsMsg{agents: m.agents, live: m.live}) // a refresh must keep its state

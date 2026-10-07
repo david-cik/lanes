@@ -121,7 +121,7 @@ func (md *modal) help() string {
 }
 
 func (md *modal) view(b *strings.Builder, width, body int) {
-	b.WriteString(bold.Render(trunc(md.title, width)) + "\n")
+	b.WriteString(accentS.Render(trunc(md.title, width)) + "\n")
 	used := 1
 	for _, l := range md.lines {
 		b.WriteString(trunc(l, width) + "\n")
