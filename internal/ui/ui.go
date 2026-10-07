@@ -32,6 +32,7 @@ type (
 		agents []agent.Agent
 		live   []state.Record
 		err    error
+		links  state.Links // re-read from disk: `lanes link` may have changed them
 	}
 	usersMsg struct {
 		users []tracker.User
@@ -170,15 +171,20 @@ func (m *Model) fetchAgents() tea.Cmd {
 	f := m.opt.Fleet
 	m.agentSeq++
 	seq := m.agentSeq
-	links := maps.Clone(m.links)
+	store := m.opt.Store
+	fallback := maps.Clone(m.links)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		links, lerr := store.Links()
+		if lerr != nil {
+			links = fallback
+		}
 		a, live, err := f.Snapshot(ctx)
 		if err == nil || len(a) > 0 {
 			a = append(a, endedSessions(links, a)...)
 		}
-		return agentsMsg{seq, a, live, err}
+		return agentsMsg{seq: seq, agents: a, live: live, err: err, links: links}
 	}
 }
 
@@ -241,6 +247,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agentErr = msg.err
 		if msg.err == nil || len(msg.agents) > 0 {
 			m.agents, m.live = msg.agents, msg.live
+			if msg.links != nil {
+				m.links = msg.links
+			}
 			m.dropVanishedShown()
 			m.forgetStopped()
 			m.forgetHooks()

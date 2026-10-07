@@ -405,9 +405,10 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 	m.live = append(m.live, msg.rec)
 	m.launchSeq = m.agentSeq // refreshes already in flight don't know this agent
 	if msg.resumed != "" {   // the fork carries the ticket now; retire the ended session's row
-		delete(m.links, state.LinkKey(msg.rec.Tool, msg.resumed))
-		if err := m.opt.Store.SaveLinks(m.links); err != nil {
+		if l, err := m.opt.Store.DeleteLink(state.LinkKey(msg.rec.Tool, msg.resumed)); err != nil {
 			m.say("", err)
+		} else {
+			m.links = l
 		}
 	}
 	m.focus(msg.rec.ID, msg.rec.Pane)
@@ -521,8 +522,7 @@ func (m *Model) linkSelected() tea.Cmd {
 
 func (m *Model) setTicket(a agent.Agent, ticket string) error {
 	if a.RecordID == "" {
-		m.links[state.LinkKey(a.Tool, a.ID)] = ticket
-		return m.opt.Store.SaveLinks(m.links)
+		return m.setLink(state.LinkKey(a.Tool, a.ID), ticket)
 	}
 	i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == a.RecordID })
 	if i < 0 {
@@ -535,6 +535,16 @@ func (m *Model) setTicket(a agent.Agent, ticket string) error {
 		}
 	}
 	return m.opt.Store.Save(m.live[i])
+}
+
+// setLink saves one link without overwriting links changed meanwhile by `lanes link`.
+func (m *Model) setLink(key, ticket string) error {
+	l, err := m.opt.Store.SetLink(key, ticket)
+	if err != nil {
+		return err
+	}
+	m.links = l
+	return nil
 }
 
 // --- adopt ---

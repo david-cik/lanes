@@ -421,3 +421,25 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 		t.Fatal("? didn't close the key list")
 	}
 }
+
+func TestLinkMadeOutsidePanelShowsOnRefresh(t *testing.T) {
+	m, _ := controlModel(t)
+	if strings.Index(view(m), "outside") < strings.Index(view(m), "Unlinked") {
+		t.Fatal("precondition: outside starts unlinked")
+	}
+	if _, err := m.opt.Store.SetLink("claude:x9", "ABC-1"); err != nil { // as `lanes link` would
+		t.Fatal(err)
+	}
+	m.Update(m.fetchAgents()())
+	if v := view(m); strings.Contains(v, "Unlinked") {
+		t.Fatalf("CLI link not picked up:\n%s", v)
+	}
+	// and a panel link doesn't drop a CLI link made after the last refresh
+	m.opt.Store.SetLink("claude:other", "ABC-9")
+	m.cursorTo(t, "outside")
+	m.Update(key("l"))
+	m.Update(key("enter")) // Remove from ABC-1
+	if l, _ := m.opt.Store.Links(); l["claude:other"] != "ABC-9" || l["claude:x9"] != state.NoTicket {
+		t.Fatalf("links %v", l)
+	}
+}

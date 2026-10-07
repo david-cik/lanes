@@ -109,7 +109,8 @@ func injected(s string) bool {
 	return false
 }
 
-// Score reads JSONL transcript lines and ranks the open ticket keys they mention.
+// Score reads JSONL transcript lines and ranks the open ticket keys they mention
+// (any key when open is nil).
 // Later lines weigh more (×0.5 at the start of what's read, ×1.5 at the end).
 func Score(r io.Reader, open map[string]bool) Result {
 	type hit struct {
@@ -131,7 +132,7 @@ func Score(r io.Reader, open map[string]bool) Result {
 			}
 			for _, m := range keyRe.FindAllStringSubmatch(s, -1) {
 				k := strings.ToUpper(m[1]) + "-" + m[2]
-				if open[k] {
+				if open == nil && plausibleKey(m[1]) || open[k] { // nil: any plausible key
 					hits = append(hits, hit{k, w, typed})
 				}
 			}
@@ -192,9 +193,11 @@ func Score(r io.Reader, open map[string]bool) Result {
 
 // Info is what a transcript says about its session.
 type Info struct {
-	Cwd   string
-	Title string // latest custom or AI-generated title
-	When  time.Time
+	Cwd        string
+	Entrypoint string // how it was started: "cli" for interactive, "sdk-…" for tools and plugins
+	First      string // the first message the user typed (usually says what the session is for)
+	Title      string // latest custom or AI-generated title
+	When       time.Time
 }
 
 // SessionInfo reads a transcript's folder (from its start) and latest title (from its
@@ -211,14 +214,20 @@ func SessionInfo(path string) (Info, error) {
 		return in, err
 	}
 	in.When = fi.ModTime()
-	var head struct {
-		Cwd string `json:"cwd"`
-	}
 	sc := bufio.NewScanner(io.LimitReader(f, 256<<10))
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	for sc.Scan() && in.Cwd == "" {
-		if json.Unmarshal(sc.Bytes(), &head) == nil {
-			in.Cwd = head.Cwd
+	for sc.Scan() && (in.Cwd == "" || in.First == "") {
+		var head struct {
+			Cwd        string `json:"cwd"`
+			Entrypoint string `json:"entrypoint"`
+		}
+		if json.Unmarshal(sc.Bytes(), &head) == nil && in.Cwd == "" {
+			in.Cwd, in.Entrypoint = head.Cwd, head.Entrypoint
+		}
+		if in.First == "" {
+			if t, ok := typed(sc.Bytes()); ok {
+				in.First = t
+			}
 		}
 	}
 	const tail = 512 << 10
@@ -251,4 +260,87 @@ func SessionInfo(path string) (Info, error) {
 		in.Title = custom
 	}
 	return in, nil
+}
+
+// Prompts returns the last n messages the user typed in the session, newest last.
+func Prompts(path string, n int) []string {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	const tail = 1 << 20
+	if fi, err := f.Stat(); err == nil && fi.Size() > tail {
+		f.Seek(-tail, io.SeekEnd)
+	}
+	var out []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	for sc.Scan() {
+		if t, ok := typed(sc.Bytes()); ok {
+			out = append(out, t)
+		}
+	}
+	if len(out) > n {
+		out = out[len(out)-n:]
+	}
+	return out
+}
+
+// typed returns the text of a transcript line if it's a message the user typed.
+func typed(line []byte) (string, bool) {
+	var e entry
+	if json.Unmarshal(line, &e) != nil || e.Type != "user" || e.IsMeta {
+		return "", false
+	}
+	var text string
+	if json.Unmarshal(e.Message.Content, &text) != nil {
+		var parts []piece
+		if json.Unmarshal(e.Message.Content, &parts) != nil {
+			return "", false
+		}
+		for _, p := range parts {
+			if p.Type == "text" {
+				text += p.Text + " "
+			}
+		}
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" || injected(text) {
+		return "", false
+	}
+	if r := []rune(text); len(r) > 200 {
+		text = string(r[:199]) + "…"
+	}
+	return text, true
+}
+
+// plausibleKey filters "any key" scoring to prefixes that look like a tracker's team
+// key (2–5 letters), so file paths, terminal names, and ids don't count.
+func plausibleKey(prefix string) bool {
+	if len(prefix) < 2 || len(prefix) > 5 {
+		return false
+	}
+	for _, r := range prefix {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
+// FileKeys scores a transcript against any key with one of the given prefixes
+// (upper case, e.g. "SRE"); with no prefixes, any plausible-looking key.
+func FileKeys(path string, prefixes map[string]bool) (Result, error) {
+	r, err := File(path, nil)
+	if err != nil || len(prefixes) == 0 {
+		return r, err
+	}
+	var out Result
+	for _, c := range r {
+		if p, _, ok := strings.Cut(c.Key, "-"); ok && prefixes[p] {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }

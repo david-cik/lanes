@@ -127,11 +127,30 @@ func TestSessionInfo(t *testing.T) {
 		`garbage`,
 	}, "\n")), 0o600)
 	in, err := SessionInfo(p)
-	if err != nil || in.Cwd != "/src/app" || in.Title != "Fix login redirect" || in.When.IsZero() {
+	if err != nil || in.Cwd != "/src/app" || in.Title != "Fix login redirect" || in.When.IsZero() || in.First != "hi" {
 		t.Fatalf("%+v %v", in, err)
 	}
 	os.WriteFile(p, []byte(`{"cwd":"/x"}`+"\n"+`{"type":"ai-title","aiTitle":"ai"}`+"\n"+`{"type":"custom-title","customTitle":"mine"}`+"\n"), 0o600)
 	if in, _ := SessionInfo(p); in.Title != "mine" {
 		t.Fatalf("custom title should win: %+v", in)
+	}
+}
+
+func TestPromptsAndAnyKey(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "s.jsonl")
+	os.WriteFile(p, []byte(strings.Join([]string{
+		line("user", `"first ask about ZZZ-5"`),
+		`{"type":"user","isMeta":true,"message":{"content":"injected"}}`,
+		line("user", `[{"type":"text","text":"second   ask"}]`),
+		line("user", `"<system-reminder>no</system-reminder>"`),
+		line("assistant", `"assistant text"`),
+		line("user", `"third"`),
+	}, "\n")), 0o600)
+	if got := Prompts(p, 2); len(got) != 2 || got[0] != "second ask" || got[1] != "third" {
+		t.Fatalf("%q", got)
+	}
+	r, _ := File(p, nil)
+	if len(r) != 1 || r[0].Key != "ZZZ-5" {
+		t.Fatalf("any-key scoring: %+v", r)
 	}
 }

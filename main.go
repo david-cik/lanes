@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/david-cik/lanes/internal/fleet"
 	"github.com/david-cik/lanes/internal/hook"
 	"github.com/david-cik/lanes/internal/install"
+	"github.com/david-cik/lanes/internal/sessions"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tmux"
 	"github.com/david-cik/lanes/internal/tracker/linear"
@@ -65,6 +68,10 @@ func run() error {
                                          report every Claude session to lanes (edits ~/.claude/settings.json after asking)
   lanes uninstall-hooks [--yes] [--settings PATH]
                                          remove exactly what install-hooks added
+  lanes sessions [--days N] [--json] [words…]
+                                         list running and recent Claude sessions (title, folder, ticket, recent prompts)
+  lanes link <session-id> <TICKET>       put a session on a ticket
+  lanes unlink <session-id>              take a session off its ticket
 
 flags:
 `)
@@ -72,6 +79,9 @@ flags:
 	}
 	if len(os.Args) > 1 && (os.Args[1] == "install-hooks" || os.Args[1] == "uninstall-hooks") {
 		return hooksCommand(os.Args[1] == "uninstall-hooks", os.Args[2:])
+	}
+	if len(os.Args) > 1 && (os.Args[1] == "sessions" || os.Args[1] == "link" || os.Args[1] == "unlink") {
+		return sessionsCommand(os.Args[1], os.Args[2:])
 	}
 	flag.Parse()
 
@@ -199,6 +209,83 @@ func takeOver(tm tmux.Client, panel string) (func(), error) {
 		return nil, err
 	}
 	return func() { tm.UnsetOpt(panel, tmux.OptPanel) }, nil
+}
+
+// sessionsCommand is `lanes sessions`, `lanes link`, `lanes unlink`: what a Claude
+// session (or a person) uses to find a session and attach it to a ticket. The panel
+// picks link changes up on its next refresh.
+func sessionsCommand(cmd string, args []string) error {
+	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+	days := fs.Int("days", 7, "include sessions active in the last N days")
+	asJSON := fs.Bool("json", false, "print JSON")
+	fs.Parse(args)
+	stateDir, err := config.StateDir()
+	if err != nil {
+		return err
+	}
+	store := state.Store{Dir: stateDir}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	running, _ := claude.New().List(ctx)
+	look := *days
+	if cmd != "sessions" {
+		look = max(look, 30)
+	}
+	all := sessions.List(running, look, store)
+	switch cmd {
+	case "sessions":
+		found := sessions.Match(all, strings.Join(fs.Args(), " "))
+		if *asJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(found)
+		}
+		for _, s := range found {
+			state := "ended"
+			if s.Running {
+				state = "running"
+			}
+			ticket := s.Ticket
+			if ticket == "" {
+				ticket = "no ticket"
+			}
+			fmt.Printf("%s  %-7s  %s  %s  [%s]\n", s.ID[:8], state, s.When.Format("Jan 02 15:04"), s.Title, ticket)
+			fmt.Printf("          %s", s.Cwd)
+			if len(s.Mentions) > 0 {
+				fmt.Printf(" · mentions %s", strings.Join(s.Mentions, ", "))
+			}
+			fmt.Println()
+			if s.First != "" {
+				fmt.Printf("          first prompt: %s\n", s.First)
+			}
+		}
+		return nil
+	case "link", "unlink":
+		want := 2
+		if cmd == "unlink" {
+			want = 1
+		}
+		if fs.NArg() != want {
+			return fmt.Errorf("usage: lanes link <session-id> <TICKET> | lanes unlink <session-id>")
+		}
+		s, err := sessions.Resolve(all, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		ticket := state.NoTicket
+		if cmd == "link" {
+			ticket = fs.Arg(1)
+		}
+		if err := sessions.Link(ctx, store, s.ID, ticket); err != nil {
+			return err
+		}
+		if cmd == "link" {
+			fmt.Printf("linked %s (%s) to %s\n", s.ID[:8], s.Title, strings.ToUpper(ticket))
+		} else {
+			fmt.Printf("took %s (%s) off its ticket\n", s.ID[:8], s.Title)
+		}
+	}
+	return nil
 }
 
 func hooksCommand(uninstall bool, args []string) error {

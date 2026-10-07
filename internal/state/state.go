@@ -161,3 +161,36 @@ func writeAtomic(path string, b []byte) error {
 	}
 	return os.Rename(f.Name(), path)
 }
+
+// SetLink changes one link, re-reading the file first so changes made meanwhile by
+// another process (the lanes CLI, the panel) aren't lost.
+func (s Store) SetLink(key, ticket string) (Links, error) {
+	l, err := s.Links()
+	if err != nil {
+		return nil, err
+	}
+	l[key] = ticket
+	return l, s.SaveLinks(l)
+}
+
+// DeleteLink removes one link, re-reading the file first (see SetLink).
+func (s Store) DeleteLink(key string) (Links, error) {
+	l, err := s.Links()
+	if err != nil {
+		return nil, err
+	}
+	delete(l, key)
+	return l, s.SaveLinks(l)
+}
+
+// SetRecordTicket changes the ticket of a launched agent's record on disk.
+func (s Store) SetRecordTicket(id, ticket string) (Record, error) {
+	recs, _ := s.All()
+	for _, r := range recs {
+		if r.ID == id {
+			r.TicketKey = ticket
+			return r, s.Save(r)
+		}
+	}
+	return Record{}, fmt.Errorf("no launched agent %s", id)
+}

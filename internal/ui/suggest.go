@@ -131,14 +131,14 @@ func (m *Model) reviewKey(k tea.KeyPressMsg) tea.Cmd {
 		it.pick, it.on = (it.pick+1)%len(it.cands), true
 	case "enter":
 		n := 0
+		var err error
 		for _, it := range rv.items {
-			if it.on {
-				m.links[state.LinkKey(it.tool, it.id)] = it.cands[it.pick].Key
+			if it.on && err == nil {
+				err = m.setLink(state.LinkKey(it.tool, it.id), it.cands[it.pick].Key)
 				n++
 			}
 		}
 		m.review = nil
-		err := m.opt.Store.SaveLinks(m.links)
 		m.rebuild()
 		m.say(fmt.Sprintf("linked %d sessions (l on a session changes or removes its link)", n), err)
 		return m.detailsMoved()
@@ -240,8 +240,7 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 	if _, set := m.links[k]; set { // linked, or unlinked on purpose, meanwhile
 		return
 	}
-	m.links[k] = msg.res[0].Key
-	err := m.opt.Store.SaveLinks(m.links)
+	err := m.setLink(k, msg.res[0].Key)
 	m.rebuild()
 	m.say(fmt.Sprintf("auto-linked %s → %s (l changes it)", msg.name, msg.res[0].Key), err)
 }
