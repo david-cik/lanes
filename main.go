@@ -157,6 +157,12 @@ flags:
 			return err
 		}
 		opt.Tmux, opt.Panel, opt.Placeholder = tm, panel, placeholder
+		label, notice, restore := setupFocus(tm, panel, cfg.FocusKey)
+		defer restore()
+		opt.FocusLabel = label
+		if notice != "" {
+			opt.Notice = notice
+		}
 
 		sock := filepath.Join(stateDir, "lanes.sock")
 		if srv, err := hook.Listen(sock); err != nil {
@@ -212,6 +218,62 @@ func hooksCommand(uninstall bool, args []string) error {
 		return errors.New("install-hooks needs a lanes binary that stays put (go install it); this one is a temporary `go run` build")
 	}
 	return install.Run(*path, bin, uninstall, *yes, os.Stdin, os.Stdout)
+}
+
+// setupFocus makes moving between the board and the agent pane easy in the session the
+// panel runs in: mouse support on, and one key (focus_key) that jumps between them,
+// with a reminder in the status bar. Everything is restored when lanes quits; the key
+// only acts in this session and passes through everywhere else.
+func setupFocus(tm tmux.Client, panel, key string) (label, notice string, restore func()) {
+	var undo []func()
+	restore = func() {
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
+		}
+	}
+	setOpt := func(name, val string) {
+		prev, set := tm.SessionOpt(panel, name)
+		if tm.SetSessionOpt(panel, name, val) != nil {
+			return
+		}
+		undo = append(undo, func() {
+			if set {
+				tm.SetSessionOpt(panel, name, prev)
+			} else {
+				tm.UnsetSessionOpt(panel, name)
+			}
+		})
+	}
+	setOpt("mouse", "on")
+	if key == "" || key == "none" {
+		return "", "", restore
+	}
+	session, err := tm.SessionOf(panel)
+	if err != nil {
+		return "", "", restore
+	}
+	label = keyLabel(key)
+	existing := tm.RootBinding(key)
+	if existing != "" && !strings.Contains(existing, "#{==:#{session_name},") { // the user's own
+		return "", fmt.Sprintf("%s is already bound in your tmux, so lanes left it alone (set focus_key in the lanes config)", label), restore
+	}
+	if err := tm.BindFocusToggle(key, session, panel); err != nil {
+		return "", "focus key: " + err.Error(), restore
+	}
+	undo = append(undo, func() { tm.Unbind(key) })
+	setOpt("status-right", fmt.Sprintf(" %s or click: board ⇄ agent ", label))
+	return label, "", restore
+}
+
+// keyLabel turns a tmux key name into what people call it: C-] → Ctrl-], M-Left → Alt-Left.
+func keyLabel(key string) string {
+	switch {
+	case strings.HasPrefix(key, "C-"):
+		return "Ctrl-" + key[2:]
+	case strings.HasPrefix(key, "M-"):
+		return "Alt-" + key[2:]
+	}
+	return key
 }
 
 // notifier shows text as a tmux message on the panel's client and, if enabled, as a

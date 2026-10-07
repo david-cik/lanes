@@ -78,12 +78,13 @@ type Options struct {
 	LinearPoll   time.Duration
 	ExternalPoll time.Duration
 
-	Hooks   <-chan hook.Event // events from launched agents; nil = no hooks
-	HookBin string            // lanes executable launched agents' hooks call
-	Socket  string            // where those hooks connect
-	Notify  func(text string) // tmux / OS notification; nil = bell only
-	Notice  string            // shown in the footer at start (e.g. why hooks are off)
-	Readers Readers           // git / PR / browser access for details; zero = real ones
+	Hooks      <-chan hook.Event // events from launched agents; nil = no hooks
+	HookBin    string            // lanes executable launched agents' hooks call
+	Socket     string            // where those hooks connect
+	Notify     func(text string) // tmux / OS notification; nil = bell only
+	Notice     string            // shown in the footer at start (e.g. why hooks are off)
+	Readers    Readers           // git / PR / browser access for details; zero = real ones
+	FocusLabel string            // key that jumps between board and agent, e.g. "Ctrl-]"; "" = none
 }
 
 type Model struct {
@@ -447,7 +448,11 @@ func (m *Model) View() tea.View {
 	case m.opt.Tmux == nil:
 		b.WriteString(faint.Render(trunc("j/k move · d details · r refresh · u assignee · l link · q quit  (run inside tmux to launch agents)", m.width)))
 	default:
-		b.WriteString(faint.Render(trunc("enter open · d details · a approve · n new · A adopt · s send · x stop · l link · L suggest links · r refresh · u assignee · q quit", m.width)))
+		hint := "enter open · d details · a approve · n new · A adopt · s send · x stop · l link · L suggest links · r refresh · u assignee · q quit"
+		if m.opt.FocusLabel != "" {
+			hint = m.opt.FocusLabel + " board⇄agent · " + hint
+		}
+		b.WriteString(faint.Render(trunc(hint, m.width)))
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true

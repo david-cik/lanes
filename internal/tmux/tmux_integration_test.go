@@ -117,3 +117,38 @@ func TestDisplayMessageIsLiteral(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSessionOptionsAndFocusBinding(t *testing.T) {
+	c := server(t)
+	panel, err := c.NewSession("lanes", t.TempDir(), nil, sleeper("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.SessionOf(panel); s != "lanes" {
+		t.Fatalf("session %q", s)
+	}
+	if _, set := c.SessionOpt(panel, "mouse"); set {
+		t.Fatal("mouse unexpectedly set on the session")
+	}
+	c.SetSessionOpt(panel, "mouse", "on")
+	if v, set := c.SessionOpt(panel, "mouse"); !set || v != "on" {
+		t.Fatalf("mouse %q %v", v, set)
+	}
+	c.UnsetSessionOpt(panel, "mouse")
+	if _, set := c.SessionOpt(panel, "mouse"); set {
+		t.Fatal("unset failed")
+	}
+	if c.RootBinding("C-]") != "" {
+		t.Fatal("C-] bound by default")
+	}
+	if err := c.BindFocusToggle("C-]", "lanes", panel); err != nil {
+		t.Fatal(err)
+	}
+	if b := c.RootBinding("C-]"); !strings.Contains(b, "#{==:#{session_name},lanes}") || !strings.Contains(b, "select-pane -t "+panel) {
+		t.Fatalf("binding %q", b)
+	}
+	c.Unbind("C-]")
+	if c.RootBinding("C-]") != "" {
+		t.Fatal("unbind failed")
+	}
+}

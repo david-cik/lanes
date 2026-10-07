@@ -141,6 +141,58 @@ func (c Client) DisplayMessage(target, text string) error {
 	return err
 }
 
+// SessionOf returns the name of the session a pane is in.
+func (c Client) SessionOf(pane string) (string, error) {
+	return c.run("display-message", "-p", "-t", pane, "#{session_name}")
+}
+
+// SessionOpt returns an option of the session that pane is in, and whether it is set
+// on that session (rather than inherited from the global value). Targeting a pane id
+// avoids session-name matching surprises.
+func (c Client) SessionOpt(pane, key string) (string, bool) {
+	out, err := c.run("show-options", "-t", pane, key)
+	if err != nil || out == "" {
+		return "", false
+	}
+	_, v, _ := strings.Cut(out, " ")
+	return v, true
+}
+
+func (c Client) SetSessionOpt(pane, key, val string) error {
+	_, err := c.run("set-option", "-t", pane, key, val)
+	return err
+}
+
+func (c Client) UnsetSessionOpt(pane, key string) error {
+	_, err := c.run("set-option", "-u", "-t", pane, key)
+	return err
+}
+
+// RootBinding returns the root-table (no prefix) binding line for key, or "".
+// (list-keys with a key argument doesn't match punctuation keys like C-], so scan.)
+func (c Client) RootBinding(key string) string {
+	out, _ := c.run("list-keys", "-T", "root")
+	for _, line := range strings.Split(out, "\n") {
+		if f := strings.Fields(line); len(f) >= 4 && f[3] == key {
+			return line
+		}
+	}
+	return ""
+}
+
+// BindFocusToggle makes key, pressed anywhere in session, jump between the panel and
+// the pane to its right. Outside session the key is passed through to the program.
+func (c Client) BindFocusToggle(key, session, panel string) error {
+	inner := fmt.Sprintf("if-shell -F '#{==:#{pane_id},%s}' 'select-pane -R' 'select-pane -t %s'", panel, panel)
+	_, err := c.run("bind-key", "-n", key, "if-shell", "-F", "#{==:#{session_name},"+session+"}", inner, "send-keys "+key)
+	return err
+}
+
+func (c Client) Unbind(key string) error {
+	_, err := c.run("unbind-key", "-n", key)
+	return err
+}
+
 // Capture returns the visible text of a pane.
 func (c Client) Capture(pane string) (string, error) {
 	return c.run("capture-pane", "-p", "-t", pane)

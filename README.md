@@ -80,8 +80,10 @@ Status: `●` working, `○` idle, `⚠` waiting for you, `◌` unknown.
 | `r` | refresh |
 | `q` | quit (agents keep running in their own tmux sessions) |
 
-Use your usual tmux keys (prefix + arrow, or the mouse) to move between the board and
-the agent pane.
+**`Ctrl-]` jumps between the board and the agent pane** (or click either one — lanes turns
+the mouse on for its tmux session). The key only works inside the lanes session; anywhere
+else it reaches your program as usual, and lanes removes it when it quits. If you've
+bound `Ctrl-]` in tmux yourself, lanes leaves yours alone; pick another with `focus_key`.
 
 ### Starting an agent (`n`)
 
@@ -148,6 +150,7 @@ branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
 auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
+focus_key = "C-]"             # tmux key name that jumps board ⇄ agent ("none" to turn off), e.g. "F12", "M-Left"
 
 # The first prompt an agent gets. Placeholders: {key} {key_lower} {slug} {title} {url}
 # {description} {preamble} {repo} {branch}
