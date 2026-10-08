@@ -262,3 +262,20 @@ func TestFoldTeamKeepsWaitingVisible(t *testing.T) {
 		t.Fatalf("didn't unfold:\n%s", view(m))
 	}
 }
+
+func TestSelectionFollowsAMovedTicket(t *testing.T) {
+	m, _ := controlModel(t)
+	m.issues = []tracker.Issue{
+		{Key: "ABC-1", Title: "fix it", Team: "Alpha", State: "Todo", StateType: "unstarted"},
+		{Key: "ABC-2", Title: "ship it", Team: "Alpha", State: "Todo", StateType: "unstarted"},
+	}
+	m.rebuild()
+	m.cursorTo(t, "ABC-2 ship it")
+	m.Update(issuesMsg{assignee: "me", issues: []tracker.Issue{ // ABC-2 moves ahead to Doing
+		{Key: "ABC-1", Title: "fix it", Team: "Alpha", State: "Todo", StateType: "unstarted"},
+		{Key: "ABC-2", Title: "ship it", Team: "Alpha", State: "Doing", StateType: "started"},
+	}})
+	if r, _ := m.selected(); r.Kind != board.TicketRow || r.Issue.Key != "ABC-2" {
+		t.Fatalf("selection stayed behind on %+v", r)
+	}
+}

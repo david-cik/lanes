@@ -387,3 +387,30 @@ func (m *Model) jumpTeam(next bool) tea.Cmd {
 	}
 	return nil
 }
+
+// rowIDs names each row by what it shows — a ticket by its key, an agent by its session,
+// a heading by its place — so a selection can be found again after rows move.
+func rowIDs(rows []board.Row) []string {
+	ids := make([]string, len(rows))
+	team, lane := "", ""
+	for i, r := range rows {
+		switch r.Kind {
+		case board.TeamRow:
+			team, lane = r.Text, ""
+			ids[i] = "team:" + team
+		case board.StateRow:
+			lane = r.Text
+			ids[i] = "lane:" + team + "/" + lane
+		case board.ProjectRow:
+			ids[i] = "project:" + team + "/" + lane + "/" + r.Text
+		case board.UnlinkedRow:
+			team, lane = "", ""
+			ids[i] = "unlinked"
+		case board.TicketRow:
+			ids[i] = "ticket:" + r.Issue.Key
+		case board.AgentRow:
+			ids[i] = "agent:" + r.Agent.Tool + ":" + r.Agent.ID + ":" + r.Agent.RecordID
+		}
+	}
+	return ids
+}

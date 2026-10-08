@@ -245,6 +245,10 @@ func (m *Model) stateOrder() map[string][]string {
 }
 
 func (m *Model) rebuild() {
+	var was string // what the cursor is on, so it can follow it to wherever it moves
+	if ids := rowIDs(m.rows); m.cursor < len(ids) {
+		was = ids[m.cursor]
+	}
 	agents := slices.Clone(m.agents)
 	m.overlay(agents)
 	m.rows = filterRows(board.Build(m.issues, agents, m.links, m.stateOrder()), m.filter)
@@ -257,6 +261,9 @@ func (m *Model) rebuild() {
 	m.teamWork = teamWork(m.rows)
 	if m.filter == "" { // a filter searches folded teams too
 		m.rows = foldTeams(m.rows, m.folded)
+	}
+	if i := slices.Index(rowIDs(m.rows), was); was != "" && i >= 0 {
+		m.cursor = i
 	}
 	m.cursor = min(m.cursor, max(len(m.rows)-1, 0))
 }
