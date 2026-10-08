@@ -308,3 +308,82 @@ func dropAdopted(agents []agent.Agent, live []state.Record) []agent.Agent {
 	}
 	return out
 }
+
+// --- teams ---
+
+// foldTeams hides everything under the headers of folded teams.
+func foldTeams(rows []board.Row, folded map[string]bool) []board.Row {
+	if len(folded) == 0 {
+		return rows
+	}
+	var out []board.Row
+	hide := false
+	for _, r := range rows {
+		switch r.Kind {
+		case board.TeamRow:
+			hide = folded[r.Text]
+			out = append(out, r)
+			continue
+		case board.UnlinkedRow:
+			hide = false
+		}
+		if !hide {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// teamWork counts each team's working and waiting agents, so a folded team's header
+// can still show them.
+func teamWork(rows []board.Row) map[string][2]int {
+	out := map[string][2]int{}
+	team := ""
+	for _, r := range rows {
+		switch {
+		case r.Kind == board.TeamRow:
+			team = r.Text
+		case r.Kind == board.UnlinkedRow:
+			team = ""
+		case r.Kind == board.AgentRow && team != "" && !r.Agent.Ended:
+			c := out[team]
+			switch r.Agent.Status {
+			case agent.Working:
+				c[0]++
+			case agent.Waiting:
+				c[1]++
+			}
+			out[team] = c
+		}
+	}
+	return out
+}
+
+// toggleTeam folds or unfolds a team, keeping the cursor on its header.
+func (m *Model) toggleTeam(team string) {
+	if m.folded == nil {
+		m.folded = map[string]bool{}
+	}
+	m.folded[team] = !m.folded[team]
+	m.rebuild()
+	for i, r := range m.rows {
+		if r.Kind == board.TeamRow && r.Text == team {
+			m.cursor = i
+			return
+		}
+	}
+}
+
+// jumpTeam moves to the next (or previous) team header.
+func (m *Model) jumpTeam(next bool) tea.Cmd {
+	step := -1
+	if next {
+		step = 1
+	}
+	for i := m.cursor + step; i >= 0 && i < len(m.rows); i += step {
+		if m.rows[i].Kind == board.TeamRow {
+			return m.moveTo(i)
+		}
+	}
+	return nil
+}

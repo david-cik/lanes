@@ -104,12 +104,14 @@ type Model struct {
 	rows     []board.Row
 	cursor   int
 	offset   int
-	spin     int    // spinner frame for working agents
-	spinOn   bool   // a spinner tick is scheduled
-	light    bool   // the terminal has a light background
-	filter   string // board rows narrowed to those matching it (/)
-	poolOpen bool   // the "up for grabs" lanes show their tickets
-	typing   bool   // the filter is being typed
+	spin     int               // spinner frame for working agents
+	spinOn   bool              // a spinner tick is scheduled
+	light    bool              // the terminal has a light background
+	filter   string            // board rows narrowed to those matching it (/)
+	poolOpen bool              // the "up for grabs" lanes show their tickets
+	folded   map[string]bool   // teams folded down to their header
+	teamWork map[string][2]int // per team: agents working, waiting (for folded headers)
+	typing   bool              // the filter is being typed
 	width    int
 	height   int
 	updated  time.Time
@@ -251,6 +253,10 @@ func (m *Model) rebuild() {
 	}
 	if m.opt.Config.GroupByProject {
 		m.rows = board.ByProject(m.rows)
+	}
+	m.teamWork = teamWork(m.rows)
+	if m.filter == "" { // a filter searches folded teams too
+		m.rows = foldTeams(m.rows, m.folded)
 	}
 	m.cursor = min(m.cursor, max(len(m.rows)-1, 0))
 }
@@ -424,6 +430,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.moveTo(m.cursor + m.boardHeight()/2)
 	case "ctrl+u", "pgup":
 		return m.moveTo(m.cursor - m.boardHeight()/2)
+	case "[", "]":
+		return m.jumpTeam(k.String() == "]")
 	case "l", "right":
 		return m.focusAgent()
 	case "/":

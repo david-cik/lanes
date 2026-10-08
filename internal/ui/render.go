@@ -131,7 +131,23 @@ func (m *Model) rowSegs(i int, st rowStats) []seg {
 	}
 	switch r.Kind {
 	case board.TeamRow:
-		return []seg{s(" "+r.Text, bold), s(fmt.Sprintf("  %d", st.count), faint)}
+		if !m.folded[r.Text] || m.filter != "" {
+			return []seg{s(" ▾ ", faint), s(r.Text, bold), s(fmt.Sprintf("  %d", st.count), faint)}
+		}
+		tickets := 0
+		for _, i := range m.issues {
+			if i.Team == r.Text && !i.Pool {
+				tickets++
+			}
+		}
+		out := []seg{s(" ▸ ", faint), s(r.Text, bold), s(fmt.Sprintf("  %d", tickets), faint)}
+		if n := m.teamWork[r.Text][0]; n > 0 {
+			out = append(out, s(fmt.Sprintf("  %s %d", m.glyphOf(agent.Working), n), workS))
+		}
+		if n := m.teamWork[r.Text][1]; n > 0 {
+			out = append(out, s(fmt.Sprintf("  ⚠ %d", n), waitS))
+		}
+		return out
 	case board.UnlinkedRow:
 		return m.laneHead(rail, "UNLINKED", st.count, faint)
 	case board.StateRow:

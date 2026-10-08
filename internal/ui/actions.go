@@ -102,6 +102,9 @@ func (m *Model) focusSelected() tea.Cmd {
 	case ok && isPoolLane(r):
 		m.togglePool()
 		return nil
+	case ok && r.Kind == board.TeamRow:
+		m.toggleTeam(r.Text)
+		return nil
 	case ok && r.Kind == board.TicketRow:
 		return m.openTicket(*r.Issue)
 	case ok && r.Kind == board.AgentRow && r.Agent.Ended:

@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/david-cik/lanes/internal/agent"
+	"github.com/david-cik/lanes/internal/board"
 	"github.com/david-cik/lanes/internal/tracker"
 )
 
@@ -233,5 +235,30 @@ func TestProjectTree(t *testing.T) {
 		if !rowHas(v, want...) {
 			t.Fatalf("no row with %q:\n%s", want, v)
 		}
+	}
+}
+
+func TestFoldTeamKeepsWaitingVisible(t *testing.T) {
+	m, _ := controlModel(t)
+	m.issues = append(m.issues, tracker.Issue{Key: "XYZ-1", Title: "other team", Team: "Beta", State: "Todo", StateType: "unstarted"})
+	m.hooks["r1"] = &hookState{status: agent.Waiting}
+	m.rebuild()
+	m.cursorTo(t, "Alpha")
+	m.Update(key("enter"))
+	v := view(m)
+	if strings.Contains(v, "ABC-1 fix it") || !rowHas(v, "▸ Alpha", "1", "⚠ 1") || !strings.Contains(v, "XYZ-1 other team") {
+		t.Fatalf("folded Alpha:\n%s", v)
+	}
+	if r, _ := m.selected(); r.Kind != board.TeamRow || r.Text != "Alpha" {
+		t.Fatalf("cursor left the header: %+v", r)
+	}
+	m.Update(key("]"))
+	if r, _ := m.selected(); r.Kind != board.TeamRow || r.Text != "Beta" {
+		t.Fatalf("] went to %+v", r)
+	}
+	m.Update(key("["))
+	m.Update(key("enter"))
+	if !strings.Contains(view(m), "ABC-1 fix it") {
+		t.Fatalf("didn't unfold:\n%s", view(m))
 	}
 }

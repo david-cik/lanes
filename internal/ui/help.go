@@ -25,6 +25,10 @@ func (m *Model) footerItems() []string {
 	r, ok := m.selected()
 	switch {
 	case !ok:
+	case r.Kind == board.TeamRow && m.folded[r.Text]:
+		keys = append(keys, "enter unfold", "] next")
+	case r.Kind == board.TeamRow:
+		keys = append(keys, "enter fold", "] next")
 	case isPoolLane(r) && m.poolOpen:
 		keys = append(keys, "enter hide")
 	case isPoolLane(r):
@@ -50,13 +54,14 @@ func (m *Model) footerItems() []string {
 var helpLines = []string{
 	"Board                                  (mouse: click selects, click again opens, wheel moves)",
 	"  ↑ ↓  j k     move (the agent pane follows)   ·  g G  Home End  top / bottom",
-	"  ctrl+d ctrl+u  PgDn PgUp   half a page",
+	"  ctrl+d ctrl+u  PgDn PgUp   half a page   ·   [ ]  previous / next team",
 	"  /          filter tickets and agents as you type (enter keeps it · esc clears)",
 	"  enter      agent: go to it · ticket: go to its agent, or resume / start one · ended: resume",
 	"  l  →       go to the agent pane",
 	"  n          start an agent on the ticket (y start · f other folder · w worktree)",
 	"             on an up-for-grabs ticket it also claims it in Linear (c leaves it)",
 	"  enter      on UP FOR GRABS: show or hide your teams' unassigned Todo tickets",
+	"             on a team: fold it to one line (it still shows ⚠ when an agent waits)",
 	"  A          adopt a session lanes didn't start (or resume an ended one)",
 	"  s          send text to the agent",
 	"  x          stop the agent (worktree and branch are kept)",

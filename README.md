@@ -83,8 +83,9 @@ Status: a spinner while working, `○` idle, `⚠` waiting for you ("needs you")
 | `↑` `↓` (or `j` `k`) | move — the right pane shows the selected agent (or the selected ticket's agent) as you go |
 | `Home` `End` (or `g` `G`) | top / bottom |
 | `PgDn` `PgUp` (or `ctrl+d` `ctrl+u`) | half a page |
+| `[` `]` | previous / next team |
 | `/` | filter tickets and agents as you type; `enter` keeps the filter, `esc` clears it |
-| `enter` | on an agent: go to it · on a ticket: go to its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it |
+| `enter` | on an agent: go to it · on a ticket: go to its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it · on a team: fold it to one line (with its working / waiting counts) or unfold it · on Up for grabs: open or close it |
 | `l` `→` | go to the agent pane |
 | `n` | start an agent on the selected ticket |
 | `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running, off the board); on an ended session, resume it |
