@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -105,5 +106,34 @@ func TestPoolTicketNotClaimedWhenLeft(t *testing.T) {
 	run(m, cmd)
 	if len(pt.claimed) != 0 {
 		t.Fatalf("claimed %v", pt.claimed)
+	}
+}
+
+func TestPoolKeptWhenAFetchFails(t *testing.T) {
+	m, _ := controlModel(t)
+	pt := &poolTracker{detailTracker: detailTracker{&fakeTracker{}}}
+	m.opt.Tracker = pt
+	m.Update(m.fetchIssues()())
+	fail := issuesMsg{assignee: "me", issues: []tracker.Issue{{Key: "ABC-1", Title: "fix it", Team: "Alpha", State: "Todo", StateType: "unstarted"}},
+		poolErr: errors.New("up for grabs: timed out")}
+	m.Update(fail)
+	if !m.isPool("ABC-7") || !strings.Contains(m.notice, "timed out") {
+		t.Fatalf("pool lost or error not shown: pool=%v notice=%q", m.isPool("ABC-7"), m.notice)
+	}
+	m.notice = ""
+	m.Update(fail)
+	if m.notice != "" || !m.isPool("ABC-7") {
+		t.Fatalf("second failure: notice %q pool %v", m.notice, m.isPool("ABC-7"))
+	}
+	fail.issues = append(fail.issues, tracker.Issue{Key: "ABC-7", Title: "grab me", Team: "Alpha", State: "Doing", StateType: "started"}) // claimed meanwhile
+	m.Update(fail)
+	n := 0
+	for _, i := range m.issues {
+		if i.Key == "ABC-7" {
+			n++
+		}
+	}
+	if n != 1 || m.isPool("ABC-7") {
+		t.Fatalf("claimed ticket shown %d times (pool=%v)", n, m.isPool("ABC-7"))
 	}
 }

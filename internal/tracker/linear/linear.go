@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -19,7 +20,13 @@ const Endpoint = "https://mcp.linear.app/mcp"
 
 var issueFields = []string{"id", "title", "url", "gitBranchName", "status", "statusType", "team", "updatedAt", "project"}
 
-type Client struct{ s *mcp.ClientSession }
+// Client talks to Linear's MCP server over one long-lived session. A session that
+// times out or breaks is dropped, and the next call opens a new one.
+type Client struct {
+	mu   sync.Mutex
+	s    *mcp.ClientSession
+	dial func(context.Context) (*mcp.ClientSession, error)
+}
 
 var (
 	_ tracker.Tracker = (*Client)(nil)
@@ -30,26 +37,71 @@ var (
 // Dial connects to endpoint. With apiKey set it sends it as a Bearer token;
 // otherwise oauth (may be nil) handles authorization.
 func Dial(ctx context.Context, endpoint, apiKey string, oauth auth.OAuthHandler) (*Client, error) {
-	t := &mcp.StreamableClientTransport{Endpoint: endpoint}
-	if apiKey != "" {
-		t.HTTPClient = &http.Client{Transport: bearer{apiKey, http.DefaultTransport}}
-	} else {
-		t.OAuthHandler = oauth
-	}
-	return Connect(ctx, t)
+	return connect(ctx, func() mcp.Transport {
+		t := &mcp.StreamableClientTransport{Endpoint: endpoint}
+		if apiKey != "" {
+			t.HTTPClient = &http.Client{Transport: bearer{apiKey, http.DefaultTransport}}
+		} else {
+			t.OAuthHandler = oauth
+		}
+		return t
+	})
 }
 
-// Connect starts an MCP session over any transport (tests use in-memory ones).
+// Connect starts an MCP session over any transport (tests use in-memory ones, which
+// can't be reopened: after a broken call it stays broken).
 func Connect(ctx context.Context, t mcp.Transport) (*Client, error) {
-	c := mcp.NewClient(&mcp.Implementation{Name: "lanes", Version: "dev"}, nil)
-	s, err := c.Connect(ctx, t, nil)
-	if err != nil {
-		return nil, fmt.Errorf("linear: connect: %w", err)
-	}
-	return &Client{s}, nil
+	return connect(ctx, func() mcp.Transport { return t })
 }
 
-func (c *Client) Close() error { return c.s.Close() }
+func connect(ctx context.Context, transport func() mcp.Transport) (*Client, error) {
+	c := &Client{dial: func(ctx context.Context) (*mcp.ClientSession, error) {
+		s, err := mcp.NewClient(&mcp.Implementation{Name: "lanes", Version: "dev"}, nil).Connect(ctx, transport(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("linear: connect: %w", err)
+		}
+		return s, nil
+	}}
+	s, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.s = s
+	return c, nil
+}
+
+func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.s == nil {
+		return nil
+	}
+	return c.s.Close()
+}
+
+// session returns the open session, reopening one that was dropped.
+func (c *Client) session(ctx context.Context) (*mcp.ClientSession, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.s == nil {
+		s, err := c.dial(ctx)
+		if err != nil {
+			return nil, err
+		}
+		c.s = s
+	}
+	return c.s, nil
+}
+
+// drop closes a session that failed, unless another call already replaced it.
+func (c *Client) drop(s *mcp.ClientSession) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.s == s {
+		c.s = nil
+		go s.Close() // Close waits for calls still on it; don't hold the lock meanwhile
+	}
+}
 
 func (c *Client) Issues(ctx context.Context, assignee string) ([]tracker.Issue, error) {
 	return c.list(ctx, map[string]any{"assignee": assignee, "fields": issueFields, "limit": 250})
@@ -170,8 +222,13 @@ func (c *Client) Users(ctx context.Context) ([]tracker.User, error) {
 
 // call invokes a tool and returns its concatenated text content.
 func (c *Client) call(ctx context.Context, tool string, args map[string]any) ([]byte, error) {
-	r, err := c.s.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+	s, err := c.session(ctx)
 	if err != nil {
+		return nil, err
+	}
+	r, err := s.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+	if err != nil { // a timeout or a broken connection: start afresh next time
+		c.drop(s)
 		return nil, fmt.Errorf("linear: %s: %w", tool, err)
 	}
 	var sb strings.Builder

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -146,5 +148,42 @@ func TestPoolAndClaim(t *testing.T) {
 	}
 	if st, _ := c.Claim(context.Background(), "ABC-7", "Alpha", nil); st != "Review" { // Linear's own listing order
 		t.Fatalf("without an order: %q", st)
+	}
+}
+
+func TestReconnectsAfterATimedOutCall(t *testing.T) {
+	var stall atomic.Bool
+	stall.Store(true)
+	s := mcp.NewServer(&mcp.Implementation{Name: "fake-linear"}, nil)
+	s.AddTool(&mcp.Tool{Name: "list_issues", InputSchema: map[string]any{"type": "object"}},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if stall.Load() {
+				<-ctx.Done() // a stuck connection: no answer until the caller gives up
+				return nil, ctx.Err()
+			}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: `{"issues":[{"id":"ABC-1","statusType":"started"}]}`}}}, nil
+		})
+	dials := 0
+	c, err := connect(context.Background(), func() mcp.Transport {
+		dials++
+		ct, st := mcp.NewInMemoryTransports()
+		if _, err := s.Connect(context.Background(), st, nil); err != nil {
+			t.Fatal(err)
+		}
+		return ct
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := c.Issues(ctx, "me"); err == nil {
+		t.Fatal("stalled call returned")
+	}
+	stall.Store(false)
+	got, err := c.Issues(context.Background(), "me")
+	if err != nil || len(got) != 1 || dials != 2 {
+		t.Fatalf("after the stall: %v %v dials=%d", got, err, dials)
 	}
 }

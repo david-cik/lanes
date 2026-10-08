@@ -94,27 +94,28 @@ type Options struct {
 }
 
 type Model struct {
-	opt      Options
-	label    string // assignee shown in the header
-	issues   []tracker.Issue
-	agents   []agent.Agent
-	live     []state.Record
-	links    state.Links
-	users    []tracker.User
-	rows     []board.Row
-	cursor   int
-	offset   int
-	spin     int               // spinner frame for working agents
-	spinOn   bool              // a spinner tick is scheduled
-	light    bool              // the terminal has a light background
-	filter   string            // board rows narrowed to those matching it (/)
-	poolOpen bool              // the "up for grabs" lanes show their tickets
-	folded   map[string]bool   // teams folded down to their header
-	teamWork map[string][2]int // per team: agents working, waiting (for folded headers)
-	typing   bool              // the filter is being typed
-	width    int
-	height   int
-	updated  time.Time
+	opt         Options
+	label       string // assignee shown in the header
+	issues      []tracker.Issue
+	agents      []agent.Agent
+	live        []state.Record
+	links       state.Links
+	users       []tracker.User
+	rows        []board.Row
+	cursor      int
+	offset      int
+	spin        int               // spinner frame for working agents
+	spinOn      bool              // a spinner tick is scheduled
+	light       bool              // the terminal has a light background
+	filter      string            // board rows narrowed to those matching it (/)
+	poolOpen    bool              // the "up for grabs" lanes show their tickets
+	folded      map[string]bool   // teams folded down to their header
+	poolFailing bool              // the last up-for-grabs fetch failed (already reported)
+	teamWork    map[string][2]int // per team: agents working, waiting (for folded headers)
+	typing      bool              // the filter is being typed
+	width       int
+	height      int
+	updated     time.Time
 
 	issueErr error
 	agentErr error
@@ -194,8 +195,10 @@ func (m *Model) fetchIssues() tea.Cmd {
 					teams = append(teams, i.Team)
 				}
 			}
-			pool, perr := p.Pool(ctx, teams)
-			if perr != nil { // the assigned tickets still show; say why the pool doesn't
+			pctx, pcancel := context.WithTimeout(context.Background(), 30*time.Second) // its own budget
+			defer pcancel()
+			pool, perr := p.Pool(pctx, teams)
+			if perr != nil { // the assigned tickets still show; the last good pool stays
 				return issuesMsg{who, is, nil, fmt.Errorf("up for grabs: %w", perr)}
 			}
 			is = append(is, pool...)
@@ -321,10 +324,22 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.issueErr = msg.err
 		if msg.err == nil { // keep the last good data on failure
-			m.issues, m.updated = msg.issues, m.now()
-			if msg.poolErr != nil {
-				m.say("", msg.poolErr)
+			if msg.poolErr != nil { // keep the up-for-grabs tickets from the last good fetch
+				fresh := map[string]bool{}
+				for _, i := range msg.issues {
+					fresh[i.Key] = true
+				}
+				for _, i := range m.issues {
+					if i.Pool && !fresh[i.Key] { // a claimed one is in the fresh list as yours
+						msg.issues = append(msg.issues, i)
+					}
+				}
+				if !m.poolFailing { // say it once, not every refresh
+					m.say("", msg.poolErr)
+				}
 			}
+			m.poolFailing = msg.poolErr != nil
+			m.issues, m.updated = msg.issues, m.now()
 			m.rebuild()
 			return m, m.detailsMoved() // the row under the cursor may have changed
 		}
@@ -505,7 +520,7 @@ func (m *Model) chooseAssignee(c choice) tea.Cmd {
 		name = id
 	}
 	m.opt.Assignee, m.label = id, name
-	m.issues, m.cursor = nil, 0
+	m.issues, m.cursor, m.poolFailing = nil, 0, false
 	m.rebuild()
 	return m.fetchIssues()
 }
