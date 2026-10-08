@@ -219,6 +219,7 @@ func (m *Model) fetchAgents() tea.Cmd {
 			links = fallback
 		}
 		a, live, err := f.Snapshot(ctx)
+		a = dropToolSessions(a)
 		if err == nil || len(a) > 0 {
 			a = append(a, endedSessions(links, a, endedFor)...)
 		}

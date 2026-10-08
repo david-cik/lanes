@@ -247,3 +247,19 @@ func TestAutoLinkSkipsUpForGrabs(t *testing.T) {
 		t.Fatalf("linked a session that's mostly about an up-for-grabs ticket: %v", links)
 	}
 }
+
+func TestToolSessionsAreDropped(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	dir := filepath.Join(cfg, "projects", "-obs")
+	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "obs1.jsonl"), []byte(`{"type":"user","cwd":"/obs","entrypoint":"sdk-cli","message":{"content":"x"}}`+"\n"), 0o600)
+	got := dropToolSessions([]agent.Agent{
+		{ID: "obs1", Tool: "claude", Cwd: "/obs", External: true},
+		{ID: "mine", Tool: "claude", Cwd: "/src", External: true}, // no transcript yet: kept
+		{ID: "r", Tool: "claude", RecordID: "r1"},                 // lanes' own: kept
+	})
+	if len(got) != 2 || got[0].ID != "mine" {
+		t.Fatalf("got %+v", got)
+	}
+}

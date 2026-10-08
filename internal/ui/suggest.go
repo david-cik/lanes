@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -284,4 +285,29 @@ func endedSessions(links state.Links, running []agent.Agent, max time.Duration) 
 	}
 	slices.SortFunc(out, func(a, b agent.Agent) int { return b.Since.Compare(a.Since) })
 	return out
+}
+
+// toolSessions remembers, per session id, whether a running session was started by a
+// tool or plugin rather than a person. Some (a memory plugin's observer, say) report
+// themselves as interactive; only their transcript's entrypoint ("sdk-…") tells.
+var toolSessions sync.Map
+
+// dropToolSessions leaves out running sessions that tools and plugins started. Each
+// transcript is read once; one not written yet is asked about again next refresh.
+func dropToolSessions(agents []agent.Agent) []agent.Agent {
+	return slices.DeleteFunc(agents, func(a agent.Agent) bool {
+		if !a.External || a.Ended || a.Tool != "claude" {
+			return false
+		}
+		if v, ok := toolSessions.Load(a.ID); ok {
+			return v.(bool)
+		}
+		in, err := suggest.SessionInfo(suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), a.Cwd, a.ID))
+		if err != nil || in.Entrypoint == "" {
+			return false
+		}
+		tool := strings.HasPrefix(in.Entrypoint, "sdk")
+		toolSessions.Store(a.ID, tool)
+		return tool
+	})
 }
