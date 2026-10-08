@@ -143,6 +143,11 @@ func (m *Model) rowSegs(i int, st rowStats) []seg {
 			}
 		}
 		return m.laneHead(rail, title, st.count, st.railS)
+	case board.ProjectRow:
+		if r.Text == "" {
+			return []seg{rail, s("  ◇ no project", faint), s(fmt.Sprintf(" · %d", st.count), faint)}
+		}
+		return []seg{rail, s("  ◆ ", faint), s(r.Text, stateC), s(fmt.Sprintf(" · %d", st.count), faint)}
 	case board.TicketRow:
 		out := []seg{rail, s("  ", plainS), s(r.Issue.Key, keyS), s(" "+r.Issue.Title, plainS)}
 		if st.waiting {
@@ -262,14 +267,16 @@ func laneStyle(stateType string) lipgloss.Style {
 // stats precomputes what row rendering needs from neighbouring rows.
 func (m *Model) stats() []rowStats {
 	st := make([]rowStats, len(m.rows))
-	team, lane := -1, -1
+	team, lane, project := -1, -1, -1
 	rail, railS := "", plainS
 	for i, r := range m.rows {
 		switch r.Kind {
 		case board.TeamRow:
-			team, lane, rail = i, -1, ""
+			team, lane, rail, project = i, -1, "", -1
+		case board.ProjectRow:
+			project = i
 		case board.StateRow:
-			lane, rail, railS = i, "┃", faint
+			lane, rail, railS, project = i, "┃", faint, -1
 			if isPoolLane(r) { // count them all, also while the lane is closed
 				for _, is := range m.issues {
 					if is.Pool && team >= 0 && is.Team == m.rows[team].Text {
@@ -287,13 +294,16 @@ func (m *Model) stats() []rowStats {
 				}
 			}
 		case board.UnlinkedRow:
-			team, lane, rail, railS = -1, i, "┆", faint
+			team, lane, rail, railS, project = -1, i, "┆", faint, -1
 		case board.TicketRow:
 			if team >= 0 && !r.Issue.Pool { // the team's count is its own tickets
 				st[team].count++
 			}
 			if lane >= 0 && !(r.Issue.Pool && isPoolLane(m.rows[lane])) {
 				st[lane].count++
+			}
+			if project >= 0 {
+				st[project].count++
 			}
 		case board.AgentRow:
 			st[i].last = i+1 >= len(m.rows) || m.rows[i+1].Kind != board.AgentRow

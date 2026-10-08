@@ -249,6 +249,9 @@ func (m *Model) rebuild() {
 	if !m.poolOpen && m.filter == "" { // a filter searches the pool too
 		m.rows = collapsePool(m.rows)
 	}
+	if m.opt.Config.GroupByProject {
+		m.rows = board.ByProject(m.rows)
+	}
 	m.cursor = min(m.cursor, max(len(m.rows)-1, 0))
 }
 

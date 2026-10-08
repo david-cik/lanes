@@ -29,6 +29,7 @@ func parseIssues(b []byte) (issues []tracker.Issue, next string, err error) {
 			StatusType    string    `json:"statusType"`
 			Team          string    `json:"team"`
 			UpdatedAt     time.Time `json:"updatedAt"`
+			Project       string    `json:"project"` // null when it has none
 		} `json:"issues"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
@@ -41,7 +42,7 @@ func parseIssues(b []byte) (issues []tracker.Issue, next string, err error) {
 		issues = append(issues, tracker.Issue{
 			Key: i.ID, Title: i.Title, URL: i.URL, Team: i.Team,
 			State: i.Status, StateType: i.StatusType, BranchName: i.GitBranchName,
-			UpdatedAt: i.UpdatedAt,
+			UpdatedAt: i.UpdatedAt, Project: i.Project,
 		})
 	}
 	return issues, r.next(), nil

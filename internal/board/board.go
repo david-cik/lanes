@@ -19,6 +19,7 @@ const (
 	TicketRow
 	AgentRow
 	UnlinkedRow
+	ProjectRow // a project's tickets within a lane; Text is the project, "" for none
 )
 
 type Row struct {
@@ -136,4 +137,57 @@ func rank(stateType string) int {
 		return r
 	}
 	return len(stateRank)
+}
+
+// ByProject groups the tickets of each lane by project, under a ProjectRow per project
+// (sorted by name, tickets with none last). A lane none of whose tickets has a project
+// is left as it is. A ticket keeps its agents and its order within the project.
+func ByProject(rows []Row) []Row {
+	var out []Row
+	for i := 0; i < len(rows); {
+		if rows[i].Kind != StateRow {
+			out = append(out, rows[i])
+			i++
+			continue
+		}
+		out = append(out, rows[i])
+		i++
+		var blocks [][]Row // a ticket and its agents
+		for i < len(rows) && (rows[i].Kind == TicketRow || rows[i].Kind == AgentRow) {
+			if rows[i].Kind == TicketRow || len(blocks) == 0 {
+				blocks = append(blocks, nil)
+			}
+			blocks[len(blocks)-1] = append(blocks[len(blocks)-1], rows[i])
+			i++
+		}
+		project := func(b []Row) string {
+			if b[0].Issue == nil {
+				return ""
+			}
+			return b[0].Issue.Project
+		}
+		if !slices.ContainsFunc(blocks, func(b []Row) bool { return project(b) != "" }) {
+			for _, b := range blocks {
+				out = append(out, b...)
+			}
+			continue
+		}
+		slices.SortStableFunc(blocks, func(a, b []Row) int {
+			pa, pb := project(a), project(b)
+			none := func(p string) int { // tickets with no project go last
+				if p == "" {
+					return 1
+				}
+				return 0
+			}
+			return cmp.Or(cmp.Compare(none(pa), none(pb)), cmp.Compare(pa, pb))
+		})
+		for j, b := range blocks {
+			if j == 0 || project(b) != project(blocks[j-1]) {
+				out = append(out, Row{Kind: ProjectRow, Level: 2, Text: project(b)})
+			}
+			out = append(out, b...)
+		}
+	}
+	return out
 }

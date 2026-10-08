@@ -17,7 +17,7 @@ import (
 
 const Endpoint = "https://mcp.linear.app/mcp"
 
-var issueFields = []string{"id", "title", "url", "gitBranchName", "status", "statusType", "team", "updatedAt"}
+var issueFields = []string{"id", "title", "url", "gitBranchName", "status", "statusType", "team", "updatedAt", "project"}
 
 type Client struct{ s *mcp.ClientSession }
 

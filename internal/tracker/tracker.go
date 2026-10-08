@@ -15,7 +15,8 @@ type Issue struct {
 	StateType  string // triage|backlog|unstarted|started|completed|canceled|duplicate
 	BranchName string // tracker-suggested git branch
 	UpdatedAt  time.Time
-	Pool       bool // unassigned and not started: offered to pick up, not assigned to anyone
+	Pool       bool   // unassigned and not started: offered to pick up, not assigned to anyone
+	Project    string // the project it belongs to, "" for none
 }
 
 type User struct {

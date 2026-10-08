@@ -57,7 +57,9 @@ personal API key instead, set `LINEAR_API_KEY`. `lanes auth logout` forgets the 
 ## The board
 
 Tickets assigned to you, grouped by team, each workflow state a lane down the left edge
-(`┏ ┃ ┗`; order them with `state_order`); completed and canceled ones are hidden. Under each ticket are the agents working on it. An agent belongs to a ticket
+(`┏ ┃ ┗`; order them with `state_order`); completed and canceled ones are hidden. Within
+a lane, tickets are grouped by project (`◆ <project> · count`, `◇ no project` last;
+`group_by_project = false` turns it off). Under each ticket are the agents working on it. An agent belongs to a ticket
 when lanes started it for that ticket, when you put it there (`t`), or when its git branch,
 session name, or folder contains the ticket key. Everything else is under **Unlinked**
 (the dashed lane).
@@ -207,6 +209,7 @@ worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
 auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
 ended_days = 3                # how long ended sessions stay under their ticket (0 = not at all)
+group_by_project = true       # within a lane, group tickets by project
 focus_key = ""                # optional single key that jumps board ⇄ agent, e.g. "C-]", "F12" ("" = prefix + h/l)
 
 # The first prompt an agent gets. Placeholders: {key} {key_lower} {slug} {title} {url}

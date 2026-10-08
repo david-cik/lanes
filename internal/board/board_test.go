@@ -112,3 +112,30 @@ func TestRemovedFromTicketStaysUnlinked(t *testing.T) {
 		t.Fatal("sentinel leaked into TicketKey")
 	}
 }
+
+func TestByProject(t *testing.T) {
+	issues := []tracker.Issue{
+		{Key: "A-1", Team: "T", State: "Doing", StateType: "started", Project: "Zeta"},
+		{Key: "A-2", Team: "T", State: "Doing", StateType: "started"},
+		{Key: "A-3", Team: "T", State: "Doing", StateType: "started", Project: "Alpha"},
+		{Key: "A-4", Team: "T", State: "Done soon", StateType: "started"}, // a lane with no projects
+	}
+	agents := []agent.Agent{{ID: "s1", Tool: "claude", TicketKey: "A-1"}}
+	var got []string
+	for _, r := range ByProject(Build(issues, agents, nil, nil)) {
+		switch r.Kind {
+		case ProjectRow:
+			got = append(got, "#"+r.Text)
+		case TicketRow:
+			got = append(got, r.Issue.Key)
+		case AgentRow:
+			got = append(got, "@"+r.Agent.ID)
+		case StateRow:
+			got = append(got, "|"+r.Text)
+		}
+	}
+	want := "|Doing #Alpha A-3 #Zeta A-1 @s1 # A-2 |Done soon A-4"
+	if g := strings.Join(got, " "); g != want {
+		t.Fatalf("got  %s\nwant %s", g, want)
+	}
+}
