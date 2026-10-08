@@ -149,13 +149,13 @@ func (m *Model) rowSegs(i int, st rowStats) []seg {
 		}
 		return []seg{rail, s("  ◆ ", faint), s(r.Text, stateC), s(fmt.Sprintf(" · %d", st.count), faint)}
 	case board.TicketRow:
-		out := []seg{rail, s("  ", plainS), s(r.Issue.Key, keyS), s(" "+r.Issue.Title, plainS)}
+		out := []seg{rail, s("  ", plainS), s(st.branch, faint), s(r.Issue.Key, keyS), s(" "+r.Issue.Title, plainS)}
 		if st.waiting {
 			out = append(out, s("  ⚠", waitS))
 		}
 		return out
 	case board.AgentRow:
-		return append([]seg{rail}, m.agentSegs(r, st.last)...)
+		return append([]seg{rail}, m.agentSegs(r, st.last, st.cont)...)
 	}
 	return []seg{s(r.Text, plainS)}
 }
@@ -167,13 +167,18 @@ func (m *Model) laneHead(rail seg, title string, n int, st lipgloss.Style) []seg
 	return []seg{rail, s(" "+title+" ", st), s(strings.Repeat("─", rule), faint), s(count, faint)}
 }
 
-func (m *Model) agentSegs(r board.Row, last bool) []seg {
+// agentSegs lays out an agent row; cont is the project tree's line beside it ("│" while
+// more tickets follow in the project, " " after its last, "" outside a project).
+func (m *Model) agentSegs(r board.Row, last bool, cont string) []seg {
 	a := r.Agent
 	tree := "├─ "
 	if last {
 		tree = "└─ "
 	}
 	ind := "   "
+	if cont != "" { // under a ticket that hangs off a project: one level deeper
+		ind = "  " + cont + "  "
+	}
 	if r.Level == 1 { // unlinked: no ticket above to branch off
 		ind, tree = "   ", ""
 	}
@@ -249,6 +254,8 @@ type rowStats struct {
 	count   int    // team, lane: tickets (or sessions) in it
 	waiting bool   // ticket: has an agent waiting for you
 	last    bool   // agent: last agent under its ticket / group
+	branch  string // ticket in a project: its tree branch, "├─ " or "└─ "
+	cont    string // agent of such a ticket: the project tree's line beside it
 	rail    string // the lane rail drawn at the row's left edge ("" = none)
 	railS   lipgloss.Style
 }
@@ -323,6 +330,33 @@ func (m *Model) stats() []rowStats {
 			}
 		}
 		st[i].rail, st[i].railS = rail, railS
+	}
+	// The project tree: each ticket in a project branches off it, its agents hang below.
+	inProject, ticket := false, -1
+	for i, r := range m.rows {
+		switch r.Kind {
+		case board.ProjectRow:
+			inProject = true
+		case board.TeamRow, board.StateRow, board.UnlinkedRow:
+			inProject = false
+		case board.TicketRow:
+			ticket = i
+			if !inProject {
+				continue
+			}
+			j := i + 1
+			for j < len(m.rows) && m.rows[j].Kind == board.AgentRow {
+				j++
+			}
+			st[i].branch = "├─ "
+			if j >= len(m.rows) || m.rows[j].Kind != board.TicketRow {
+				st[i].branch = "└─ "
+			}
+		case board.AgentRow:
+			if ticket >= 0 && st[ticket].branch != "" && r.Level > 1 {
+				st[i].cont = map[string]string{"├─ ": "│", "└─ ": " "}[st[ticket].branch]
+			}
+		}
 	}
 	// Bracket each lane: a cap on its heading, a foot on its last row.
 	for i, r := range m.rows {

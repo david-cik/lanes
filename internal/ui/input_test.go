@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/david-cik/lanes/internal/tracker"
 )
 
 // rowY is the screen line of the first board row containing text.
@@ -215,5 +217,21 @@ func TestWrapKeepsIndent(t *testing.T) {
 	got := wrap("  a reason long enough to need a second line here", 24)
 	if len(got) < 2 || !strings.HasPrefix(got[1], "  ") {
 		t.Fatalf("%q", got)
+	}
+}
+
+func TestProjectTree(t *testing.T) {
+	m, _ := controlModel(t)
+	m.opt.Config.GroupByProject = true
+	m.issues = []tracker.Issue{
+		{Key: "ABC-1", Title: "fix it", Team: "Alpha", State: "Todo", StateType: "unstarted", Project: "Launch"},
+		{Key: "ABC-2", Title: "ship it", Team: "Alpha", State: "Todo", StateType: "unstarted", Project: "Launch"},
+	}
+	m.rebuild()
+	v := view(m)
+	for _, want := range [][]string{{"◆ Launch", "· 2"}, {"├─ ABC-1 fix it"}, {"│", "├─", "one"}, {"└─ ABC-2 ship it"}} {
+		if !rowHas(v, want...) {
+			t.Fatalf("no row with %q:\n%s", want, v)
+		}
 	}
 }
