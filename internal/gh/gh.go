@@ -14,6 +14,7 @@ type Checks struct{ Pass, Fail, Pending, Skipped int }
 
 type PR struct {
 	Number int
+	Title  string
 	URL    string
 	State  string // OPEN, MERGED, CLOSED
 	Draft  bool
@@ -41,12 +42,13 @@ type Unavailable struct{ Reason string }
 
 func (u Unavailable) Error() string { return u.Reason }
 
-// Find returns the PR for branch in the repo at dir, or nil if there is none.
+// Find returns the PR for branch in the repo at dir (or for a PR URL, anywhere), or nil
+// if there is none.
 func Find(ctx context.Context, run Runner, dir, branch string) (*PR, error) {
 	if branch == "" {
 		return nil, nil
 	}
-	out, err := run(ctx, dir, "pr", "view", branch, "--json", "number,url,state,isDraft,reviewDecision,statusCheckRollup")
+	out, err := run(ctx, dir, "pr", "view", branch, "--json", "number,title,url,state,isDraft,reviewDecision,statusCheckRollup")
 	if err != nil {
 		msg := err.Error()
 		switch {
@@ -61,6 +63,7 @@ func Find(ctx context.Context, run Runner, dir, branch string) (*PR, error) {
 	}
 	var r struct {
 		Number int    `json:"number"`
+		Title  string `json:"title"`
 		URL    string `json:"url"`
 		State  string `json:"state"`
 		Draft  bool   `json:"isDraft"`
@@ -76,7 +79,7 @@ func Find(ctx context.Context, run Runner, dir, branch string) (*PR, error) {
 	if err := json.Unmarshal(out, &r); err != nil {
 		return nil, fmt.Errorf("gh pr view: %w", err)
 	}
-	pr := &PR{Number: r.Number, URL: r.URL, State: r.State, Draft: r.Draft, Review: r.Review}
+	pr := &PR{Number: r.Number, Title: r.Title, URL: r.URL, State: r.State, Draft: r.Draft, Review: r.Review}
 	for _, c := range r.Checks {
 		result := c.Conclusion
 		if c.State != "" { // StatusContext

@@ -97,6 +97,7 @@ Status: a spinner while working, `○` idle, `⚠` waiting for you ("needs you")
 | `:` | ask Claude in plain words — "attach my CSP session to ABC-12", or on a ticket "find my old sessions for this ticket". It knows the ticket you're on, proposes one or more links (you confirm), asks back if unsure (you answer), or just answers |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `o` | open the agent's pull request, or the ticket, in the browser |
+| `p` | the ticket's pull requests (on a ticket or one of its agents): opens the one, or lists them with title and state to pick from |
 | `u` | show another person's tickets |
 | `r` | refresh |
 | `?` | list every key (the footer shows only the keys for the selected row) |

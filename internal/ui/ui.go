@@ -398,6 +398,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.confirmLaunch(msg.plan)
 	case askMsg:
 		return m, m.gotAsk(msg)
+	case prsMsg:
+		return m, m.gotPRs(msg)
 	case claimedMsg:
 		return m, m.claimed(msg)
 	case adoptPlanMsg:
@@ -470,6 +472,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		}
 	case "o":
 		return m.openSelected()
+	case "p":
+		return m.pullRequests()
 	case "r":
 		cmds := []tea.Cmd{m.fetchIssues(), m.fetchAgents()}
 		if m.details {

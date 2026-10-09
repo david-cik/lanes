@@ -36,7 +36,7 @@ func (m *Model) footerItems() []string {
 	case r.Kind == board.TicketRow && r.Issue.Pool:
 		keys = append(keys, "enter start", "d details", "o open")
 	case r.Kind == board.TicketRow:
-		keys = append(keys, "enter agent", "n new", "d details", "o open")
+		keys = append(keys, "enter agent", "n new", "p PRs", "d details", "o open")
 	case r.Kind == board.AgentRow && r.Agent.Ended:
 		keys = append(keys, "enter resume", "t ticket", "d details")
 	case r.Kind == board.AgentRow && r.Agent.RecordID != "":
@@ -70,6 +70,7 @@ var helpLines = []string{
 	"  :          ask Claude, e.g. \"attach my CSP session to ABC-12\" (you confirm)",
 	"  a          answer a waiting permission request",
 	"  d          details: git, pull request, activity  ·  o  open PR / ticket",
+	"  p          the ticket's pull requests: opens the one, or lists them to pick from",
 	"  u          show someone else's tickets  ·  r  refresh  ·  q  quit",
 	"",
 	"Panes",

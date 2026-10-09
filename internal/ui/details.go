@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -175,6 +177,10 @@ func (m *Model) openSelected() tea.Cmd {
 		m.say("", fmt.Errorf("nothing to open here (agents open their PR, tickets open in the tracker)"))
 		return nil
 	}
+	return m.openURL(url)
+}
+
+func (m *Model) openURL(url string) tea.Cmd {
 	open := m.readers.Open
 	return func() tea.Msg {
 		if err := open(url); err != nil {
@@ -182,6 +188,92 @@ func (m *Model) openSelected() tea.Cmd {
 		}
 		return noticeMsg{"opened " + url, nil}
 	}
+}
+
+type prsMsg struct {
+	key  string
+	urls []string // linked in the tracker, plus the selected agent's own PR
+	prs  []*gh.PR // state and title for each url, nil where gh couldn't say
+	err  error
+}
+
+// pullRequests (p) opens the selected ticket's pull requests: the one straight away,
+// or a list to choose from.
+func (m *Model) pullRequests() tea.Cmd {
+	issue, ok := m.selectedIssue()
+	if !ok {
+		m.say("", fmt.Errorf("select a ticket (or one of its agents) to see its pull requests"))
+		return nil
+	}
+	var own string // an agent's branch PR, if lanes already knows it
+	if r, ok := m.selected(); ok && r.Kind == board.AgentRow {
+		if c, ok := m.prCache[r.Agent.Cwd+"\x00"+r.Agent.Branch]; ok && c.pr != nil {
+			own = c.pr.URL
+		}
+	}
+	tr, read := m.opt.Tracker, m.readers.PR
+	m.say("looking up "+issue.Key+"'s pull requests…", nil)
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		d, err := tr.Issue(ctx, issue.Key)
+		if err != nil {
+			return prsMsg{key: issue.Key, err: err}
+		}
+		urls := d.PRURLs
+		if own != "" && !slices.Contains(urls, own) {
+			urls = append(urls, own)
+		}
+		prs := make([]*gh.PR, len(urls))
+		var wg sync.WaitGroup
+		for i, u := range urls {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				prs[i], _ = read(ctx, "", u) // a URL works from any folder
+			}()
+		}
+		wg.Wait()
+		return prsMsg{key: issue.Key, urls: urls, prs: prs}
+	}
+}
+
+func (m *Model) gotPRs(msg prsMsg) tea.Cmd {
+	m.notice = ""
+	switch {
+	case msg.err != nil:
+		m.say("", msg.err)
+		return nil
+	case len(msg.urls) == 0:
+		m.say("", fmt.Errorf("no pull requests are linked to %s", msg.key))
+		return nil
+	case len(msg.urls) == 1:
+		return m.openURL(msg.urls[0])
+	}
+	var items []choice
+	for i, u := range msg.urls {
+		label := u
+		if pr := msg.prs[i]; pr != nil {
+			state := strings.ToLower(pr.State)
+			if pr.Draft && pr.State == "OPEN" {
+				state = "draft"
+			}
+			label = fmt.Sprintf("#%d %s  %s", pr.Number, pr.Title, faint.Render("· "+state+" · "+repoOf(u)))
+		}
+		items = append(items, choice{label, u})
+	}
+	m.modal = &modal{title: msg.key + "'s pull requests", items: items,
+		onChoose: func(c choice) tea.Cmd { return m.openURL(c.value) }}
+	return nil
+}
+
+// repoOf is "owner/repo" from a GitHub pull request URL.
+func repoOf(url string) string {
+	parts := strings.Split(strings.TrimPrefix(url, "https://github.com/"), "/")
+	if len(parts) >= 2 {
+		return parts[0] + "/" + parts[1]
+	}
+	return url
 }
 
 var (
