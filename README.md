@@ -73,8 +73,8 @@ to claim it in Linear — assign it to you and move it to the team's first start
 adopt them (`A`), but not control them. Once you adopt one, its original (which keeps
 running) is no longer shown.
 
-Status: a spinner while working, `○` idle, `⚠` waiting for you ("needs you"), `·` ended,
-`◌` unknown. `◀` marks the agent shown on the right.
+Status: a spinner while working, `✓` ready (finished a turn you haven't looked at yet),
+`○` idle, `⚠` waiting for you ("needs you"), `·` ended, `◌` unknown. `◀` marks the agent shown on the right.
 
 ## Keys
 
@@ -140,6 +140,14 @@ Only one agent can run in a worktree; a second agent on the same ticket gets a w
 
 Claude asks whether to trust each new folder. lanes notices the prompt and tells you to
 answer it in the agent's pane; it never presses keys for you.
+
+### Notifications
+
+When an agent lanes started finishes a turn, its row turns `✓ ready`, the header counts
+`✓ n ready`, the terminal bell rings, and tmux shows "<ticket> is ready for you" — unless
+that agent is the one on screen. Looking at it (showing or going to it) clears the mark.
+Permission requests ring and notify the same way. Set `notify_os = true` for desktop
+notifications too.
 
 ### Approving (`a`)
 

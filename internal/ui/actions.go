@@ -166,6 +166,9 @@ func (m *Model) focus(id, pane string) {
 
 // show puts an agent in the right slot without moving focus to it.
 func (m *Model) show(id, pane string) bool {
+	if st := m.hooks[id]; st != nil {
+		st.ready = false // you're looking at it now
+	}
 	if m.shown == id {
 		return true
 	}

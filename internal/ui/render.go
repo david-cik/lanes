@@ -110,6 +110,10 @@ func (m *Model) header() string {
 	if n := m.waitingCount(); n > 0 {
 		left = append(left, s(fmt.Sprintf(" ⚠ %d waiting · a ", n), warnBdg), s("  ", plainS))
 	}
+	if n := m.readyCount(); n > 0 {
+		left = append(left, s(fmt.Sprintf("✓ %d ready  ", n), okSty))
+		idle = max(idle-n, 0) // ready ones are idle too; count them once
+	}
 	if idle > 0 {
 		left = append(left, s(fmt.Sprintf("○ %d", idle), faint))
 	}
@@ -213,7 +217,13 @@ func (m *Model) agentSegs(r board.Row, last bool, cont string) []seg {
 		}
 	}
 	status := string(a.Status)
+	glyph := m.glyphOf(a.Status)
+	ready := false
+	if hs := m.hooks[hookKey(a)]; hs != nil && hs.ready && a.Status == agent.Idle {
+		ready, status, glyph, st = true, "ready", "✓", okSty
+	}
 	switch {
+	case ready:
 	case a.Ended:
 		status = "ended"
 	case a.Status == agent.Waiting:
@@ -221,7 +231,7 @@ func (m *Model) agentSegs(r board.Row, last bool, cont string) []seg {
 	case status == "":
 		status = string(agent.Unknown)
 	}
-	out := []seg{s(ind, plainS), s(tree, faint), s(m.glyphOf(a.Status)+" ", st), s(pad(trunc(shown, 16), 16), name), s("  "+pad(status, 9), st)}
+	out := []seg{s(ind, plainS), s(tree, faint), s(glyph+" ", st), s(pad(trunc(shown, 16), 16), name), s("  "+pad(status, 9), st)}
 	when := ""
 	if !a.Since.IsZero() {
 		when = age(m.now().Sub(a.Since))

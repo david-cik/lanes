@@ -314,3 +314,40 @@ func TestExternalSessionReportsThroughGlobalHooks(t *testing.T) {
 		t.Fatal("state kept for a session that's gone")
 	}
 }
+
+// event sends a plain hook event for agent id and runs what it returns.
+func event(m *Model, id, name string) {
+	_, cmd := m.Update(hookMsg(hook.Event{Agent: id, Tool: "claude", Event: name, Payload: []byte(`{}`), Reply: func([]byte) {}}))
+	if cmd == nil {
+		return
+	}
+	if b, ok := cmd().(tea.BatchMsg); ok {
+		for _, c := range b {
+			if c != nil {
+				c()
+			}
+		}
+	}
+}
+
+func TestReadyWhenATurnFinishes(t *testing.T) {
+	m, _, notes := hookModel(t)
+	event(m, "r1", "UserPromptSubmit")
+	event(m, "r1", "Stop")
+	if len(*notes) != 1 || !strings.Contains((*notes)[0], "ABC-1 is ready for you") {
+		t.Fatalf("notes %v", *notes)
+	}
+	if v := view(m); !rowHas(v, "✓ one", "ready") || !strings.Contains(v, "✓ 1 ready") {
+		t.Fatalf("view:\n%s", v)
+	}
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(key("j")) // onto "one": shown on the right, so you've seen it
+	if strings.Contains(view(m), "✓ 1 ready") {
+		t.Fatalf("still ready after looking:\n%s", view(m))
+	}
+	event(m, "r1", "UserPromptSubmit") // the shown agent finishing again: no ping
+	event(m, "r1", "Stop")
+	if len(*notes) != 1 {
+		t.Fatalf("pinged for the agent on screen: %v", *notes)
+	}
+}

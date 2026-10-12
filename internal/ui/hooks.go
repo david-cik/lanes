@@ -25,6 +25,7 @@ type hookState struct {
 	since    time.Time
 	pending  *pending
 	trust    bool       // the folder-trust prompt is on screen (hooks don't fire before it)
+	ready    bool       // finished a turn while you weren't looking; cleared when you look
 	activity []activity // newest last, at most activityMax
 }
 
@@ -99,11 +100,17 @@ func (m *Model) hook(ev hook.Event) tea.Cmd {
 	if st.pending != nil && (he.Request != nil || he.Status == agent.Working || he.Status == agent.Idle || he.Status == agent.Done) {
 		m.release(st, "that request was answered in the agent's pane")
 	}
+	var cmd tea.Cmd
 	if he.Status != "" && he.Status != st.status {
+		if st.status == agent.Working && he.Status == agent.Idle { // a turn finished
+			cmd = m.turnDone(ev.Agent, st)
+		}
+		if he.Status != agent.Idle { // working again, waiting, or ended: not "ready" any more
+			st.ready = false
+		}
 		st.status, st.since = he.Status, m.now()
 	}
 	st.log(m.now(), he.Activity)
-	var cmd tea.Cmd
 	if he.Request != nil && ev.Reply != nil {
 		st.pending = &pending{id: ev.ID, tool: ev.Tool, req: *he.Request, reply: ev.Reply, at: m.now()}
 		cmd = m.notify(ev.Agent, fmt.Sprintf("%s: %s", he.Request.Tool, he.Request.Summary))
@@ -162,8 +169,23 @@ func (m *Model) whoIs(id string) string {
 	return id
 }
 
+// turnDone marks an agent lanes started as ready for you when it finishes a turn, and
+// says so, unless it's the one on screen (you can see it). Sessions started elsewhere
+// stay quiet: you're in their terminal.
+func (m *Model) turnDone(id string, st *hookState) tea.Cmd {
+	if !slices.ContainsFunc(m.live, func(r state.Record) bool { return r.ID == id }) || m.shown == id {
+		return nil
+	}
+	st.ready = true
+	return m.ping(m.whoIs(id) + " is ready for you")
+}
+
 func (m *Model) notify(id, what string) tea.Cmd {
-	text := m.whoIs(id) + " needs you — " + what
+	return m.ping(m.whoIs(id) + " needs you — " + what)
+}
+
+// ping rings the terminal bell and shows text as a tmux (and, if on, desktop) notice.
+func (m *Model) ping(text string) tea.Cmd {
 	cmds := []tea.Cmd{tea.Raw("\a")}
 	if n := m.opt.Notify; n != nil {
 		cmds = append(cmds, func() tea.Msg { n(text); return nil })
@@ -203,6 +225,16 @@ func (m *Model) overlay(agents []agent.Agent) {
 			agents[i].Status, agents[i].Since = st.status, st.since
 		}
 	}
+}
+
+func (m *Model) readyCount() int {
+	n := 0
+	for _, st := range m.hooks {
+		if st.ready {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *Model) waitingCount() int {

@@ -76,6 +76,8 @@ var helpLines = []string{
 	"Panes",
 	"{panes}",
 	"",
+	"Status: spinner working · ✓ ready (finished a turn; clears when you look) · ○ idle · ⚠ needs you",
+	"",
 	"Approving (a)",
 	"  y once · s this session · A always (this repo) · e edit rule · tab other rule",
 	"  n deny · m deny with message · p answer in the pane",
