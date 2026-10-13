@@ -41,6 +41,7 @@ type Config struct {
 	AutoLink         bool     `toml:"auto_link"`        // link new sessions whose transcript clearly points at one ticket
 	EndedDays        int      `toml:"ended_days"`       // how long ended sessions stay under their ticket (0 = not at all)
 	GroupByProject   bool     `toml:"group_by_project"` // within a lane, group tickets by project
+	NotifyVia        string   `toml:"notify_via"`       // desktop notifications: "auto", "terminal" (escape code), "system"
 	FocusKey         string   `toml:"focus_key"`        // optional tmux key that jumps between board and agent ("" = use the tmux prefix + h/l or arrows)
 
 	Agents map[string]AgentConfig `toml:"agents"`
@@ -111,6 +112,11 @@ func Load(path string) (Config, error) {
 	}
 	if !strings.Contains(c.BranchTemplate, "{key}") && !strings.Contains(c.BranchTemplate, "{key_lower}") {
 		return c, fmt.Errorf("%s: branch_template must contain {key} or {key_lower} so agents can be matched to tickets", path)
+	}
+	switch c.NotifyVia {
+	case "", "auto", "terminal", "system":
+	default:
+		return c, fmt.Errorf("%s: notify_via must be \"auto\", \"terminal\" or \"system\", got %q", path, c.NotifyVia)
 	}
 	for i, r := range c.RepoRoots {
 		c.RepoRoots[i] = Expand(r)

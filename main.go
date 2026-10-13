@@ -185,7 +185,23 @@ flags:
 				opt.Hooks, opt.HookBin, opt.Socket = srv.Events(), bin, sock
 			}
 		}
-		opt.Notify = notifier(tm, panel, cfg.NotifyOS)
+		// A terminal that shows notifications from an escape code gets them that way:
+		// its own icon, and a click comes back to its window. Others use the system's.
+		// Asked at each notification: the terminal attached now may not be the one
+		// lanes started in (or there was none).
+		proto := func() string {
+			if !cfg.NotifyOS {
+				return ""
+			}
+			p := notifyProtocol(cfg.NotifyVia, tm.TermType(panel))
+			// "all": also while another window of the session is on screen ("on"
+			// would drop it then).
+			if p != "" && tm.SetOpt(panel, "allow-passthrough", "all") != nil {
+				return "" // tmux can't pass it through
+			}
+			return p
+		}
+		opt.Notify, opt.TermNotify = notifier(tm, panel, cfg.NotifyOS), proto
 	}
 	_, err = tea.NewProgram(ui.New(opt)).Run()
 	return err
@@ -455,12 +471,44 @@ func keyLabel(key string) string {
 	return key
 }
 
-// notifier shows text as a tmux message on the panel's client and, if enabled, as a
-// desktop notification. Arguments go to exec directly: no shell sees ticket text.
-func notifier(tm tmux.Client, panel string, desktop bool) func(string) {
-	return func(text string) {
+// notifyProtocol picks how desktop notifications are sent: a terminal escape code
+// ("osc9", "osc99", "osc777") for terminals known to show them — by tmux's
+// client_termtype, e.g. "iTerm2 3.7.1", "kitty(0.36)" — or "" for the system notifier.
+// via ("auto", "terminal", "system") overrides the guess.
+func notifyProtocol(via, termType string) string {
+	switch via {
+	case "system":
+		return ""
+	case "terminal":
+		if p := knownProtocol(termType); p != "" {
+			return p
+		}
+		return "osc9" // the most widely understood
+	}
+	return knownProtocol(termType)
+}
+
+func knownProtocol(termType string) string {
+	t := strings.ToLower(termType)
+	for _, k := range []struct{ prefix, proto string }{
+		{"iterm2", "osc9"}, {"wezterm", "osc9"}, {"ghostty", "osc9"},
+		{"kitty", "osc99"},
+		{"foot", "osc777"},
+	} {
+		if strings.HasPrefix(t, k.prefix) {
+			return k.proto
+		}
+	}
+	return ""
+}
+
+// notifier shows text as a tmux message on the panel's client and, unless the
+// terminal shows it itself (byTerminal), as a desktop notification from the system.
+// Arguments go to exec directly: no shell sees ticket text.
+func notifier(tm tmux.Client, panel string, desktop bool) func(text string, byTerminal bool) {
+	return func(text string, byTerminal bool) {
 		tm.DisplayMessage(panel, "lanes: "+text)
-		if !desktop {
+		if !desktop || byTerminal {
 			return
 		}
 		switch {

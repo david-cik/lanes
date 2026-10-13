@@ -142,6 +142,13 @@ func (c Client) DisplayMessage(target, text string) error {
 	return err
 }
 
+// TermType is the outer terminal of the client showing pane, as tmux learned it
+// (e.g. "iTerm2 3.7.1"), or "".
+func (c Client) TermType(pane string) string {
+	t, _ := c.run("display-message", "-p", "-t", pane, "#{client_termtype}")
+	return t
+}
+
 // SessionOf returns the name of the session a pane is in.
 func (c Client) SessionOf(pane string) (string, error) {
 	return c.run("display-message", "-p", "-t", pane, "#{session_name}")

@@ -147,7 +147,10 @@ When an agent lanes started finishes a turn, its row turns `✓ ready`, the head
 `✓ n ready`, the terminal bell rings, and tmux shows "<ticket> is ready for you" — unless
 that agent is the one on screen. Looking at it (showing or going to it) clears the mark.
 Permission requests ring and notify the same way. Set `notify_os = true` for desktop
-notifications too.
+notifications too. lanes sends them through your terminal when it knows how — the escape
+code iTerm2, WezTerm and Ghostty (OSC 9), kitty (OSC 99) or foot (OSC 777) understand,
+passed through tmux — so they carry the terminal's icon and a click brings you back to it. Other terminals get the system's notifier (`osascript`,
+`notify-send`). `notify_via = "terminal"` or `"system"` overrides the guess.
 
 ### Approving (`a`)
 
@@ -217,6 +220,7 @@ default_agent = "claude"
 branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_lower}
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
+notify_via = "auto"           # how: "auto" (the terminal's own, if known), "terminal", "system"
 auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
 ended_days = 3                # how long ended sessions stay under their ticket (0 = not at all)
 group_by_project = true       # within a lane, group tickets by project

@@ -184,13 +184,55 @@ func (m *Model) notify(id, what string) tea.Cmd {
 	return m.ping(m.whoIs(id) + " needs you — " + what)
 }
 
+// termNoticeMsg carries a terminal notification, worked out off the UI loop, to be
+// written out.
+type termNoticeMsg struct{ seq string }
+
 // ping rings the terminal bell and shows text as a tmux (and, if on, desktop) notice.
+// Whether the terminal shows the desktop notice itself is decided once, in the
+// background (it asks tmux), and the system notifier is used only if it doesn't.
 func (m *Model) ping(text string) tea.Cmd {
-	cmds := []tea.Cmd{tea.Raw("\a")}
-	if n := m.opt.Notify; n != nil {
-		cmds = append(cmds, func() tea.Msg { n(text); return nil })
+	term, n := m.opt.TermNotify, m.opt.Notify
+	return tea.Batch(tea.Raw("\a"), func() tea.Msg {
+		proto := ""
+		if term != nil {
+			proto = term()
+		}
+		seq := termNotice(proto, text)
+		if n != nil {
+			n(text, seq != "")
+		}
+		if seq == "" {
+			return nil
+		}
+		return termNoticeMsg{seq}
+	})
+}
+
+// termNotice is a desktop notification the terminal itself shows, in the escape code
+// it understands ("osc9", "osc99", "osc777"; "" = none), wrapped to pass through tmux.
+// Control characters are dropped from the text so a ticket title can't end it early.
+func termNotice(protocol, text string) string {
+	clean := strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == ';' && protocol == "osc777" {
+			return -1
+		}
+		return r
+	}, text)
+	var seq string
+	switch protocol {
+	case "osc9":
+		seq = "\x1b]9;lanes: " + clean + "\x07"
+	case "osc99": // kitty
+		seq = "\x1b]99;;lanes: " + clean + "\x1b\\"
+	case "osc777":
+		seq = "\x1b]777;notify;lanes;" + clean + "\x07"
+	default:
+		return ""
 	}
-	return tea.Batch(cmds...)
+	// tmux passes a sequence through when it's wrapped in DCS tmux; … ST, with every
+	// ESC inside doubled.
+	return "\x1bPtmux;" + strings.ReplaceAll(seq, "\x1b", "\x1b\x1b") + "\x1b\\"
 }
 
 // forgetHooks drops state for agents that are gone, releasing any waiting hook.

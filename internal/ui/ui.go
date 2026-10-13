@@ -80,14 +80,15 @@ type Options struct {
 	LinearPoll   time.Duration
 	ExternalPoll time.Duration
 
-	Hooks      <-chan hook.Event // events from launched agents; nil = no hooks
-	HookBin    string            // lanes executable launched agents' hooks call
-	Socket     string            // where those hooks connect
-	Notify     func(text string) // tmux / OS notification; nil = bell only
-	Notice     string            // shown in the footer at start (e.g. why hooks are off)
-	Readers    Readers           // git / PR / browser access for details; zero = real ones
-	FocusLabel string            // key that jumps between board and agent, e.g. "Ctrl-]"; "" = none
-	Prefix     string            // the tmux prefix as people write it, e.g. "Ctrl-b"
+	Hooks      <-chan hook.Event                  // events from launched agents; nil = no hooks
+	HookBin    string                             // lanes executable launched agents' hooks call
+	Socket     string                             // where those hooks connect
+	Notify     func(text string, byTerminal bool) // tmux message, and a system notification unless the terminal shows one; nil = bell only
+	TermNotify func() string                      // the terminal's own notification code now: "osc9", "osc99", "osc777", "" for none
+	Notice     string                             // shown in the footer at start (e.g. why hooks are off)
+	Readers    Readers                            // git / PR / browser access for details; zero = real ones
+	FocusLabel string                             // key that jumps between board and agent, e.g. "Ctrl-]"; "" = none
+	Prefix     string                             // the tmux prefix as people write it, e.g. "Ctrl-b"
 	// DoublePrefix: the prefix pressed twice switches board ⇄ agent here instead of
 	// reaching the agent (where Claude takes Ctrl-b as "move to the background").
 	DoublePrefix bool
@@ -400,6 +401,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotAsk(msg)
 	case prsMsg:
 		return m, m.gotPRs(msg)
+	case termNoticeMsg:
+		return m, tea.Raw(msg.seq)
 	case claimedMsg:
 		return m, m.claimed(msg)
 	case adoptPlanMsg:

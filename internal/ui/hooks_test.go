@@ -23,7 +23,7 @@ func hookModel(t *testing.T) (*Model, *fakeTmux, *[]string) {
 	m, ft := controlModel(t)
 	m.opt.Adapters = []agent.Adapter{claude.New()}
 	var notes []string
-	m.opt.Notify = func(s string) { notes = append(notes, s) }
+	m.opt.Notify = func(s string, _ bool) { notes = append(notes, s) }
 	return m, ft, &notes
 }
 
@@ -349,5 +349,44 @@ func TestReadyWhenATurnFinishes(t *testing.T) {
 	event(m, "r1", "Stop")
 	if len(*notes) != 1 {
 		t.Fatalf("pinged for the agent on screen: %v", *notes)
+	}
+}
+
+func TestTermNotice(t *testing.T) {
+	if got := termNotice("osc9", "ABC-1 is ready"); got != "\x1bPtmux;\x1b\x1b]9;lanes: ABC-1 is ready\x07\x1b\\" {
+		t.Fatalf("osc9 %q", got)
+	}
+	if got := termNotice("osc777", "a;b"); !strings.Contains(got, "]777;notify;lanes;ab\x07") {
+		t.Fatalf("osc777 %q", got)
+	}
+	if got := termNotice("osc99", "x"); !strings.Contains(got, "]99;;lanes: x\x1b\x1b\\") {
+		t.Fatalf("osc99 %q", got)
+	}
+	if got := termNotice("osc9", "evil\x07\x1b]0;title"); strings.Count(got, "\x07") != 1 {
+		t.Fatalf("control characters got through: %q", got)
+	}
+	if termNotice("", "x") != "" {
+		t.Fatal("no protocol, no sequence")
+	}
+}
+
+func TestPingUsesTheTerminalOrTheSystemNotOneThenTheOther(t *testing.T) {
+	m, _ := controlModel(t)
+	var byTerm []bool
+	m.opt.Notify = func(_ string, b bool) { byTerm = append(byTerm, b) }
+	for _, proto := range []string{"osc9", ""} {
+		m.opt.TermNotify = func() string { return proto }
+		var got tea.Msg
+		for _, c := range m.ping("ABC-1 is ready for you")().(tea.BatchMsg) {
+			if msg := c(); msg != nil {
+				got = msg
+			}
+		}
+		if _, sent := got.(termNoticeMsg); sent != (proto != "") {
+			t.Fatalf("%q: terminal notice %v", proto, got)
+		}
+	}
+	if len(byTerm) != 2 || !byTerm[0] || byTerm[1] {
+		t.Fatalf("system notifier told byTerminal=%v", byTerm)
 	}
 }
