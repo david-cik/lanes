@@ -30,6 +30,7 @@ type modal struct {
 	confirm  bool
 	actions  []action
 	hint     string // footer text; "" = the default for the modal's kind
+	scroll   int    // first line of text shown, when it's taller than the panel (action modals)
 	onChoose func(choice) tea.Cmd
 	onInput  func(string) tea.Cmd
 	onYes    func() tea.Cmd
@@ -60,6 +61,19 @@ func (md *modal) key(k tea.KeyPressMsg) (cmd tea.Cmd, done bool) {
 				return cmd, !keep
 			}
 		}
+		switch s { // keys no action uses scroll the text
+		case "j", "down":
+			md.scroll++
+		case "k", "up":
+			md.scroll--
+		case "ctrl+d", "pgdown", "space":
+			md.scroll += 10
+		case "ctrl+u", "pgup":
+			md.scroll -= 10
+		case "g", "home":
+			md.scroll = 0
+		}
+		md.scroll = max(md.scroll, 0) // view() trims the other end
 	case md.confirm:
 		switch s {
 		case "y", "enter":
@@ -150,8 +164,24 @@ func wrap(s string, width int) []string {
 	return append(out[:1], rest...)
 }
 
-func (md *modal) view(b *strings.Builder, width, body int) {
+// headView is the part of head that fits above an action modal's actions, from its
+// scroll position (other modals show all of it).
+func (md *modal) headView(width, body int) []string {
 	head := md.head(width)
+	if md.actions == nil {
+		return head
+	}
+	room := max(body-len(md.actions), 1)
+	if len(head) <= room {
+		md.scroll = 0
+		return head
+	}
+	md.scroll = min(md.scroll, len(head)-room)
+	return head[md.scroll : md.scroll+room]
+}
+
+func (md *modal) view(b *strings.Builder, width, body int) {
+	head := md.headView(width, body)
 	for _, l := range head {
 		b.WriteString(l + "\n")
 	}

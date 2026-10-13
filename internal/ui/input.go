@@ -227,7 +227,7 @@ func keyOf(k string) tea.KeyPressMsg {
 // keyAt maps a click on line y of a modal (0 = its title) to the key that does the
 // same: a list item (after selecting it), an action, or confirm's yes / no.
 func (md *modal) keyAt(y, width, body int) (tea.KeyPressMsg, bool) {
-	head := len(md.head(width))
+	head := len(md.headView(width, body))
 	y -= head
 	switch {
 	case y < 0 || md.input:

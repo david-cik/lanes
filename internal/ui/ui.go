@@ -388,6 +388,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case gitMsg, prMsg, issueMsg:
 		m.detailsUpdate(msg)
+		if im, ok := msg.(issueMsg); ok {
+			m.cardDetails(im.key)
+		}
 	case trustGoneMsg:
 		if st := m.hooks[msg.id]; st != nil {
 			st.trust = false
@@ -477,6 +480,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.openSelected()
 	case "p":
 		return m.pullRequests()
+	case "i":
+		return m.ticketCard()
 	case "r":
 		cmds := []tea.Cmd{m.fetchIssues(), m.fetchAgents()}
 		if m.details {

@@ -421,8 +421,14 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 		t.Fatalf("ticket footer %q", f)
 	}
 	m.Update(key("?"))
-	if v := view(m); !strings.Contains(v, "take it off its ticket") || !rowHas(v, "Ctrl-b ←/→", "board ⇄ agent") || !rowHas(v, "Ctrl-b Ctrl-b", "avoid in an agent") {
+	if v := strings.Join(m.modal.lines, "\n"); !strings.Contains(v, "take it off its ticket") || !rowHas(v, "Ctrl-b ←/→", "board ⇄ agent") || !rowHas(v, "Ctrl-b Ctrl-b", "avoid in an agent") {
 		t.Fatalf("help:\n%s", v)
+	}
+	for range 40 { // the help scrolls; its last lines come into view
+		m.Update(key("down"))
+	}
+	if !strings.Contains(view(m), "deny with message") {
+		t.Fatalf("help didn't scroll to its end:\n%s", view(m))
 	}
 	m.Update(key("?"))
 	if m.modal != nil {
@@ -430,7 +436,7 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 	}
 	m.opt.DoublePrefix = true
 	m.Update(key("?"))
-	if v := view(m); !rowHas(v, "Ctrl-b Ctrl-b", "also board ⇄ agent") || strings.Contains(v, "avoid in an agent") {
+	if v := strings.Join(m.modal.lines, "\n"); !rowHas(v, "Ctrl-b Ctrl-b", "also board ⇄ agent") || strings.Contains(v, "avoid in an agent") {
 		t.Fatalf("help with the double prefix guarded:\n%s", v)
 	}
 }

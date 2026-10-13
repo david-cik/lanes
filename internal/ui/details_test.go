@@ -154,10 +154,18 @@ func TestOpenKey(t *testing.T) {
 	settle(m, cmd)
 	_, cmd = m.Update(key("o"))
 	settle(m, cmd)
-	if len(fr.opened) != 1 || fr.opened[0] != "https://github.com/acme/app/pull/41" {
+	if len(fr.opened) != 1 || fr.opened[0] != "https://github.com/acme/app/pull/41" { // its ticket has no link here
 		t.Fatalf("opened %v", fr.opened)
 	}
-	m.cursorTo(t, "outside") // nothing cached for it yet
+	m.issues[0].URL = "https://tracker.example/ABC-1"
+	_, cmd = m.Update(key("o")) // with one, an agent opens its ticket
+	settle(m, cmd)
+	if len(fr.opened) != 2 || fr.opened[1] != "https://tracker.example/ABC-1" {
+		t.Fatalf("opened %v", fr.opened)
+	}
+	fr.opened = fr.opened[:1]
+	m.issues[0].URL = ""     // its ticket has no link again,
+	m.cursorTo(t, "outside") // and nothing is cached for its PR
 	m.Update(key("o"))
 	if len(fr.opened) != 1 || !strings.Contains(m.notice, "nothing to open") {
 		t.Fatalf("opened %v notice %q", fr.opened, m.notice)
@@ -210,5 +218,51 @@ func TestTicketFetchErrorShownNotLoading(t *testing.T) {
 func TestOpenRefusesNonWebURL(t *testing.T) {
 	if err := defaultReaders().Open("-a Calculator"); err == nil {
 		t.Fatal("opened a non-URL")
+	}
+}
+
+func TestTicketCard(t *testing.T) {
+	m, fr := detailsModel(t)
+	m.issues[0].URL, m.issues[0].Project = "https://tracker.example/ABC-1", "Launch"
+	m.opt.Tracker = detailTracker{&fakeTracker{}} // description: "lives in the widget repo"
+	m.cursorTo(t, "one")                          // an agent: the card is its ticket's
+	_, cmd := m.Update(key("i"))
+	if m.modal == nil || !strings.HasPrefix(m.modal.title, "ABC-1") || !strings.Contains(strings.Join(m.modal.lines, " "), "loading…") {
+		t.Fatalf("card %+v", m.modal)
+	}
+	settle(m, cmd)
+	v := view(m)
+	for _, want := range []string{"Launch", "description", "lives in the widget repo", "agents", "one"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("card lacks %q:\n%s", want, v)
+		}
+	}
+	_, cmd = m.Update(key("o"))
+	settle(m, cmd)
+	if len(fr.opened) != 1 || fr.opened[0] != "https://tracker.example/ABC-1" || m.modal != nil {
+		t.Fatalf("o from the card: opened %v modal %v", fr.opened, m.modal)
+	}
+}
+
+func TestLongCardScrolls(t *testing.T) {
+	m, _ := detailsModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	m.modal = &modal{title: "long", lines: strings.Split(strings.Repeat("line\n", 40)+"the end", "\n"),
+		actions: []action{{"o", "open", func() (tea.Cmd, bool) { return nil, false }}}}
+	if strings.Contains(view(m), "the end") {
+		t.Fatal("everything fit; nothing to scroll")
+	}
+	for range 50 {
+		m.Update(key("down"))
+	}
+	if v := view(m); !strings.Contains(v, "the end") || !strings.Contains(v, "open") {
+		t.Fatalf("scrolled to the end:\n%s", v)
+	}
+}
+
+func TestMentionTagsShowTheirText(t *testing.T) {
+	in := `Follow-up to <issue id="1" href="https://x/ABC-3">ABC-3</issue>, ask <user id="2">Ada</user>.`
+	if got := mentionTag.ReplaceAllString(in, "$2"); got != "Follow-up to ABC-3, ask Ada." {
+		t.Fatalf("%q", got)
 	}
 }

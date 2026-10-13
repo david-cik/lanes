@@ -168,13 +168,15 @@ func (m *Model) openSelected() tea.Cmd {
 	case !ok:
 	case r.Kind == board.TicketRow:
 		url = r.Issue.URL
-	case r.Kind == board.AgentRow:
-		if c, ok := m.prCache[r.Agent.Cwd+"\x00"+r.Agent.Branch]; ok && c.pr != nil {
+	case r.Kind == board.AgentRow: // its ticket; an agent on no ticket opens its PR
+		if i, ok := m.selectedIssue(); ok && i.URL != "" {
+			url = i.URL
+		} else if c, ok := m.prCache[r.Agent.Cwd+"\x00"+r.Agent.Branch]; ok && c.pr != nil {
 			url = c.pr.URL
 		}
 	}
 	if url == "" {
-		m.say("", fmt.Errorf("nothing to open here (agents open their PR, tickets open in the tracker)"))
+		m.say("", fmt.Errorf("nothing to open here (o opens a ticket, or the PR of an agent on no ticket)"))
 		return nil
 	}
 	return m.openURL(url)
