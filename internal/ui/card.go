@@ -48,7 +48,7 @@ func (m *Model) showCard(i tracker.Issue) {
 	}
 	lines := []string{faint.Render(strings.Join(meta, " · ")), faint.Render(i.URL), ""}
 	c, ok := m.issueDetails[i.Key]
-	lines = append(lines, sect.Render("pull requests"))
+	lines = append(lines, m.divider("pull requests"))
 	switch {
 	case !ok:
 		lines = append(lines, faint.Render("  loading…"))
@@ -61,7 +61,7 @@ func (m *Model) showCard(i tracker.Issue) {
 			lines = append(lines, "  "+clean(u))
 		}
 	}
-	lines = append(lines, "", sect.Render("agents"))
+	lines = append(lines, m.divider("agents"))
 	n := 0
 	for _, a := range m.agents {
 		if a.TicketKey == i.Key {
@@ -73,7 +73,7 @@ func (m *Model) showCard(i tracker.Issue) {
 		lines = append(lines, faint.Render("  none"))
 	}
 	if ok && strings.TrimSpace(c.detail.Description) != "" {
-		lines = append(lines, "", sect.Render("description"))
+		lines = append(lines, m.divider("description"))
 		for _, l := range strings.Split(strings.TrimSpace(mentionTag.ReplaceAllString(c.detail.Description, "$2")), "\n") {
 			lines = append(lines, "  "+clean(l))
 		}

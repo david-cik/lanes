@@ -112,6 +112,12 @@ var helpSections = []helpSection{
 	}},
 }
 
+// divider is a section title ruled out to the panel's edge: "── Move ──────".
+func (m *Model) divider(title string) string {
+	head := "── " + title + " "
+	return sect.Render(head) + faint.Render(strings.Repeat("─", max(m.width-len([]rune(head)), 3)))
+}
+
 // helpKeyWidth is the key column of the key list.
 const helpKeyWidth = 11
 
@@ -121,11 +127,8 @@ func helpRow(k, d string) string {
 
 func (m *Model) showHelp() {
 	var lines []string
-	for i, sec := range helpSections {
-		if i > 0 {
-			lines = append(lines, "")
-		}
-		lines = append(lines, sect.Render(sec.title))
+	for _, sec := range helpSections {
+		lines = append(lines, m.divider(sec.title))
 		keys := sec.keys
 		if sec.title == "Panes" {
 			keys = m.panesHelp()
@@ -134,7 +137,7 @@ func (m *Model) showHelp() {
 			lines = append(lines, helpRow(k[0], k[1]))
 		}
 	}
-	lines = append(lines, "", sect.Render("Status"),
+	lines = append(lines, m.divider("Status"),
 		"  "+workS.Render(m.glyphOf(agent.Working))+" working   "+okSty.Render("✓")+" ready   ○ idle   "+waitS.Render("⚠")+" needs you   · ended", "")
 	closeHelp := func() (tea.Cmd, bool) { return nil, false }
 	m.modal = &modal{title: "Keys", lines: lines, hint: "↑↓ scroll · ? esc close", actions: []action{
