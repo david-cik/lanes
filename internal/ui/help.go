@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/board"
 )
 
@@ -51,84 +52,115 @@ func (m *Model) footerItems() []string {
 	return keys
 }
 
-var helpLines = []string{
-	"Board                                  (mouse: click selects, click again opens, wheel moves)",
-	"  ↑ ↓  j k     move (the agent pane follows)   ·  g G  Home End  top / bottom",
-	"  ctrl+d ctrl+u  PgDn PgUp   half a page   ·   [ ]  previous / next team",
-	"  /          filter tickets and agents as you type (enter keeps it · esc clears)",
-	"  enter      agent: go to it · ticket: go to its agent, or resume / start one · ended: resume",
-	"  l  →       go to the agent pane",
-	"  N          new ticket in this team (and project): title, then an optional description",
-	"  n          start an agent on the ticket (y start · f other folder · w worktree)",
-	"             on an up-for-grabs ticket it also claims it in Linear (c leaves it)",
-	"  enter      on UP FOR GRABS: show or hide your teams' unassigned Todo tickets",
-	"             on a team: fold it to one line (it still shows ⚠ when an agent waits)",
-	"  A          adopt a session lanes didn't start (or resume an ended one)",
-	"  s          send text to the agent",
-	"  x          stop the agent (worktree and branch are kept)",
-	"  t          move a session to another ticket, or take it off its ticket",
-	"  T          suggest tickets for unlinked sessions from their transcripts",
-	"  :          ask Claude, e.g. \"attach my CSP session to ABC-12\" (you confirm)",
-	"  a          answer a waiting permission request",
-	"  i          the ticket on the whole panel: state, project, PRs, agents, description",
-	"  o          open the ticket in the browser (from an agent too)",
-	"  d          details below the board: git, pull request, activity",
-	"  p          the ticket's pull requests: opens the one, or lists them to pick from",
-	"  u          show someone else's tickets  ·  r  refresh  ·  q  quit",
-	"",
-	"Panes",
-	"{panes}",
-	"",
-	"Status: spinner working · ✓ ready (finished a turn; clears when you look) · ○ idle · ⚠ needs you",
-	"",
-	"Approving (a)",
-	"  y once · s this session · A always (this repo) · e edit rule · tab other rule",
-	"  n deny · m deny with message · p answer in the pane",
+// helpSection is one block of the key list: a title and key → what it does.
+type helpSection struct {
+	title string
+	keys  [][2]string
+}
+
+var helpSections = []helpSection{
+	{"Move", [][2]string{
+		{"↑ ↓  j k", "move (the agent shows on the right)"},
+		{"g G", "top / bottom"},
+		{"PgUp PgDn", "half a page (also ctrl+u ctrl+d)"},
+		{"[ ]", "previous / next team"},
+		{"/", "filter as you type (esc clears)"},
+		{"click", "select; click again to open; wheel scrolls"},
+	}},
+	{"Look", [][2]string{
+		{"enter", "go to the agent (on a ticket: its agent)"},
+		{"i", "the ticket: state, PRs, description"},
+		{"o", "open the ticket in the browser"},
+		{"p", "the ticket's pull requests"},
+		{"d", "details under the board (git, PR, activity)"},
+	}},
+	{"Work", [][2]string{
+		{"n", "start an agent on the ticket"},
+		{"N", "create a new ticket"},
+		{"s", "send text to the agent"},
+		{"a", "answer a waiting request"},
+		{"x", "stop the agent (worktree is kept)"},
+		{"A", "adopt a session lanes didn't start"},
+	}},
+	{"Sessions on tickets", [][2]string{
+		{"t", "move a session to a ticket, or take it off"},
+		{"T", "suggest tickets for unlinked sessions"},
+		{":", "ask Claude (\"find my old sessions\")"},
+	}},
+	{"Board", [][2]string{
+		{"enter", "on a team: fold it to one line"},
+		{"enter", "on Up for grabs: show unassigned tickets"},
+		{"u", "someone else's tickets"},
+		{"r", "refresh"},
+		{"q", "quit (agents keep running)"},
+	}},
+	{"Panes", nil}, // filled in by panesHelp: it depends on your tmux prefix
+	{"Starting an agent (n)", [][2]string{
+		{"y  enter", "start"},
+		{"f", "start in another folder"},
+		{"w", "use a new git worktree instead"},
+		{"c", "up-for-grabs ticket: claim it, or not"},
+	}},
+	{"Approving (a)", [][2]string{
+		{"y", "allow once"},
+		{"s", "allow for this session"},
+		{"A", "always allow (this repo)"},
+		{"e  tab", "edit the rule / pick another rule"},
+		{"n", "deny"},
+		{"m", "deny with a message"},
+		{"p", "answer in the agent's pane"},
+	}},
+}
+
+// helpKeyWidth is the key column of the key list.
+const helpKeyWidth = 11
+
+func helpRow(k, d string) string {
+	return "  " + keyS.Render(pad(k, helpKeyWidth)) + " " + d
 }
 
 func (m *Model) showHelp() {
 	var lines []string
-	for _, l := range helpLines {
-		if l == "{panes}" {
-			lines = append(lines, m.panesHelp()...)
-			continue
+	for i, sec := range helpSections {
+		if i > 0 {
+			lines = append(lines, "")
 		}
-		lines = append(lines, l)
+		lines = append(lines, sect.Render(sec.title))
+		keys := sec.keys
+		if sec.title == "Panes" {
+			keys = m.panesHelp()
+		}
+		for _, k := range keys {
+			lines = append(lines, helpRow(k[0], k[1]))
+		}
 	}
+	lines = append(lines, "", sect.Render("Status"),
+		"  "+workS.Render(m.glyphOf(agent.Working))+" working   "+okSty.Render("✓")+" ready   ○ idle   "+waitS.Render("⚠")+" needs you   · ended", "")
 	closeHelp := func() (tea.Cmd, bool) { return nil, false }
-	m.modal = &modal{title: "Keys", lines: lines, actions: []action{
-		{"?", "close", closeHelp}, {"q", "close", closeHelp}, {"enter", "close", closeHelp},
+	m.modal = &modal{title: "Keys", lines: lines, hint: "↑↓ scroll · ? esc close", actions: []action{
+		{"?", "", closeHelp}, {"q", "", closeHelp}, {"enter", "", closeHelp}, // the hint says how
 	}}
 }
 
-// panesHelp lists the keys for moving between the board and the agent, one per line.
-func (m *Model) panesHelp() []string {
+// panesHelp lists the keys for moving between the board and the agent.
+func (m *Model) panesHelp() [][2]string {
 	p := m.opt.Prefix
-	rows := [][2]string{}
+	var rows [][2]string
 	if f := strings.TrimSuffix(m.opt.FocusLabel, " ⇄"); f != "" {
 		rows = append(rows, [2]string{f, "board ⇄ agent"})
 	}
 	rows = append(rows,
 		[2]string{"l  →", "from the board, go to the agent"},
 		[2]string{"click", "a pane to move into it"},
-		[2]string{p + " z", "zoom the agent pane (again to unzoom)"},
+		[2]string{p + " z", "zoom the agent pane"},
 	)
 	switch {
 	case m.opt.DoublePrefix:
-		rows = append(rows, [2]string{p + " " + p, "also board ⇄ agent (it never reaches the agent)"})
+		rows = append(rows, [2]string{p + " " + p, "also board ⇄ agent"})
 	case p == "Ctrl-b":
-		rows = append(rows, [2]string{"Ctrl-b Ctrl-b", "avoid in an agent: it sends Ctrl-b to Claude,"},
-			[2]string{"", "which moves the session to the background"})
+		rows = append(rows, [2]string{"Ctrl-b ×2", "avoid in an agent: Claude backgrounds"})
 	}
-	w := 0
-	for _, r := range rows {
-		w = max(w, len([]rune(r[0])))
-	}
-	var out []string
-	for _, r := range rows {
-		out = append(out, "  "+r[0]+strings.Repeat(" ", w-len([]rune(r[0])))+"   "+r[1])
-	}
-	return out
+	return rows
 }
 
 // focusItem turns "Ctrl-b ←/→" into a footer item whose key part has no spaces.

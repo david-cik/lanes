@@ -17,6 +17,18 @@ type action struct {
 	run        func() (cmd tea.Cmd, keepOpen bool)
 }
 
+// shown are the actions listed under the text: those with a label (one without
+// still works, when another key already says the same).
+func (md *modal) shown() []action {
+	var out []action
+	for _, a := range md.actions {
+		if a.label != "" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // modal is the one overlay at a time: a filterable list, a text input, or a yes/no.
 type modal struct {
 	id       string // identifies modals that update later (e.g. "assignee")
@@ -171,7 +183,7 @@ func (md *modal) headView(width, body int) []string {
 	if md.actions == nil {
 		return head
 	}
-	room := max(body-len(md.actions), 1)
+	room := max(body-len(md.shown()), 1)
 	if len(head) <= room {
 		md.scroll = 0
 		return head
@@ -188,7 +200,7 @@ func (md *modal) view(b *strings.Builder, width, body int) {
 	used := len(head)
 	switch {
 	case md.actions != nil:
-		for _, a := range md.actions {
+		for _, a := range md.shown() {
 			b.WriteString(trunc(fmt.Sprintf("  %-4s %s", a.key, a.label), width) + "\n")
 			used++
 		}

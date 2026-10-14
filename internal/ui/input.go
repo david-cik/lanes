@@ -232,8 +232,8 @@ func (md *modal) keyAt(y, width, body int) (tea.KeyPressMsg, bool) {
 	switch {
 	case y < 0 || md.input:
 	case md.actions != nil:
-		if y < len(md.actions) {
-			return keyOf(md.actions[y].key), true
+		if acts := md.shown(); y < len(acts) {
+			return keyOf(acts[y].key), true
 		}
 	case md.confirm:
 		if y < 2 {

@@ -421,13 +421,13 @@ func TestFooterFitsAndHelpListsEverything(t *testing.T) {
 		t.Fatalf("ticket footer %q", f)
 	}
 	m.Update(key("?"))
-	if v := strings.Join(m.modal.lines, "\n"); !strings.Contains(v, "take it off its ticket") || !rowHas(v, "Ctrl-b ←/→", "board ⇄ agent") || !rowHas(v, "Ctrl-b Ctrl-b", "avoid in an agent") {
+	if v := strings.Join(m.modal.lines, "\n"); !strings.Contains(v, "or take it off") || !rowHas(v, "Ctrl-b ←/→", "board ⇄ agent") || !rowHas(v, "Ctrl-b ×2", "avoid in an agent") {
 		t.Fatalf("help:\n%s", v)
 	}
 	for range 40 { // the help scrolls; its last lines come into view
 		m.Update(key("down"))
 	}
-	if !strings.Contains(view(m), "deny with message") {
+	if !strings.Contains(view(m), "needs you") { // the Status line comes last
 		t.Fatalf("help didn't scroll to its end:\n%s", view(m))
 	}
 	m.Update(key("?"))
