@@ -112,6 +112,7 @@ type Model struct {
 	poolOpen    bool              // the "up for grabs" lanes show their tickets
 	folded      map[string]bool   // teams folded down to their header
 	poolFailing bool              // the last up-for-grabs fetch failed (already reported)
+	follow      string            // a ticket just created: the cursor goes to it when it shows up
 	teamWork    map[string][2]int // per team: agents working, waiting (for folded headers)
 	typing      bool              // the filter is being typed
 	width       int
@@ -342,6 +343,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.poolFailing = msg.poolErr != nil
 			m.issues, m.updated = msg.issues, m.now()
 			m.rebuild()
+			m.followNew()
 			return m, m.detailsMoved() // the row under the cursor may have changed
 		}
 	case agentsMsg:
@@ -404,6 +406,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotAsk(msg)
 	case prsMsg:
 		return m, m.gotPRs(msg)
+	case createdMsg:
+		return m, m.created(msg)
 	case termNoticeMsg:
 		return m, tea.Raw(msg.seq)
 	case claimedMsg:
@@ -482,6 +486,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.pullRequests()
 	case "i":
 		return m.ticketCard()
+	case "N":
+		return m.newTicket()
 	case "r":
 		cmds := []tea.Cmd{m.fetchIssues(), m.fetchAgents()}
 		if m.details {

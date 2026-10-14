@@ -87,6 +87,7 @@ Status: a spinner while working, `✓` ready (finished a turn you haven't looked
 | `/` | filter tickets and agents as you type; `enter` keeps the filter, `esc` clears it |
 | `enter` | on an agent: go to it · on a ticket: go to its agent, or resume one of its ended sessions, or start a new one · on an ended session: resume it · on a team: fold it to one line (with its working / waiting counts) or unfold it · on Up for grabs: open or close it |
 | `l` `→` | go to the agent pane |
+| `N` | create a ticket, assigned to you in Todo, in the team (and project) of the row you're on: a title, then an optional description; the cursor moves to it |
 | `n` | start an agent on the selected ticket |
 | `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running, off the board); on an ended session, resume it |
 | `a` | answer the selected (or oldest) waiting permission request |
@@ -256,8 +257,9 @@ hand.
 - Press keys in an agent's terminal for you.
 - Edit your Claude settings, except `install-hooks` / `uninstall-hooks` after you agree.
 - Delete worktrees or branches.
-- Write to your issue tracker, except claiming an "up for grabs" ticket you start an
-  agent on (which the start screen shows, and `c` turns off); never to GitHub.
+- Write to your issue tracker, except creating a ticket you ask for (`N`) and claiming an
+  "up for grabs" ticket you start an agent on (which the start screen shows, and `c` turns
+  off); never to GitHub.
 
 ## Troubleshooting
 

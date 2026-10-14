@@ -58,6 +58,7 @@ var helpLines = []string{
 	"  /          filter tickets and agents as you type (enter keeps it · esc clears)",
 	"  enter      agent: go to it · ticket: go to its agent, or resume / start one · ended: resume",
 	"  l  →       go to the agent pane",
+	"  N          new ticket in this team (and project): title, then an optional description",
 	"  n          start an agent on the ticket (y start · f other folder · w worktree)",
 	"             on an up-for-grabs ticket it also claims it in Linear (c leaves it)",
 	"  enter      on UP FOR GRABS: show or hide your teams' unassigned Todo tickets",

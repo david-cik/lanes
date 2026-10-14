@@ -32,6 +32,7 @@ var (
 	_ tracker.Tracker = (*Client)(nil)
 	_ tracker.Pooler  = (*Client)(nil)
 	_ tracker.Claimer = (*Client)(nil)
+	_ tracker.Creator = (*Client)(nil)
 )
 
 // Dial connects to endpoint. With apiKey set it sends it as a Bearer token;
@@ -122,6 +123,27 @@ func (c *Client) Pool(ctx context.Context, teams []string) ([]tracker.Issue, err
 		all = append(all, is...)
 	}
 	return all, nil
+}
+
+// Create makes an issue on team, assigned to the signed-in user, in the team's
+// not-started (Todo-type) state, and returns its key.
+func (c *Client) Create(ctx context.Context, team, title, description, project string) (string, error) {
+	args := map[string]any{"team": team, "title": title, "assignee": "me", "state": "unstarted"}
+	if description != "" {
+		args["description"] = description
+	}
+	if project != "" {
+		args["project"] = project
+	}
+	b, err := c.call(ctx, "save_issue", args)
+	if err != nil {
+		return "", err
+	}
+	d, err := parseIssue(b)
+	if err != nil || d.Key == "" {
+		return "", tracker.ErrNoKey // made, but we can't tell which it is
+	}
+	return d.Key, nil
 }
 
 // Claim assigns key to the signed-in user and moves it to the team's first started

@@ -3,6 +3,7 @@ package tracker
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -43,6 +44,15 @@ type Tracker interface {
 // Pooler lists the unassigned, not-yet-started issues of the given teams.
 type Pooler interface {
 	Pool(ctx context.Context, teams []string) ([]Issue, error)
+}
+
+// ErrNoKey: the tracker made the issue but its answer didn't say which key it got.
+var ErrNoKey = errors.New("created, but the answer had no key")
+
+// Creator makes a new issue on team, assigned to the signed-in user, in a not-started
+// state; project may be "". It returns the new issue's key.
+type Creator interface {
+	Create(ctx context.Context, team, title, description, project string) (string, error)
 }
 
 // Claimer assigns an issue to the signed-in user and moves it to the team's first

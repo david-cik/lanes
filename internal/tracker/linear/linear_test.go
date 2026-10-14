@@ -187,3 +187,24 @@ func TestReconnectsAfterATimedOutCall(t *testing.T) {
 		t.Fatalf("after the stall: %v %v dials=%d", got, err, dials)
 	}
 }
+
+func TestCreate(t *testing.T) {
+	var got map[string]any
+	s := mcp.NewServer(&mcp.Implementation{Name: "fake-linear"}, nil)
+	s.AddTool(&mcp.Tool{Name: "save_issue", InputSchema: map[string]any{"type": "object"}},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			json.Unmarshal(req.Params.Arguments, &got)
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: `{"id":"ABC-12","title":"Fix it","status":"Todo","statusType":"unstarted"}`}}}, nil
+		})
+	c := connectFake(t, s)
+	key, err := c.Create(context.Background(), "Alpha", "Fix it", "", "Launch")
+	if err != nil || key != "ABC-12" {
+		t.Fatalf("key %q err %v", key, err)
+	}
+	if got["team"] != "Alpha" || got["title"] != "Fix it" || got["assignee"] != "me" || got["state"] != "unstarted" || got["project"] != "Launch" {
+		t.Fatalf("args %+v", got)
+	}
+	if _, has := got["description"]; has {
+		t.Fatalf("empty description sent: %+v", got)
+	}
+}
