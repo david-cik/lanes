@@ -126,3 +126,43 @@ func (m *Model) followNew() {
 	}
 	m.follow = ""
 }
+
+// siblings tells an agent about the other open tickets in its ticket's project that
+// lanes knows of — yours and the unassigned ones up for grabs — and which have an agent
+// on them, so it stays in its lane instead of doing their work.
+// It returns "" when the ticket has no project or the project no other tickets.
+func (m *Model) siblings(key string) (string, int) {
+	var self tracker.Issue
+	for _, i := range m.issues {
+		if i.Key == key {
+			self = i
+		}
+	}
+	if self.Project == "" {
+		return "", 0
+	}
+	busy := map[string]bool{}
+	for _, a := range m.agents {
+		if !a.Ended {
+			busy[a.TicketKey] = true
+		}
+	}
+	var lines []string
+	for _, i := range m.issues {
+		if i.Project != self.Project || i.Key == key {
+			continue
+		}
+		note := i.State
+		if busy[i.Key] {
+			note += ", an agent is working on it"
+		}
+		lines = append(lines, fmt.Sprintf("- %s %s (%s)", i.Key, strings.Join(strings.Fields(i.Title), " "), note))
+	}
+	if len(lines) == 0 {
+		return "", 0
+	}
+	return fmt.Sprintf("This ticket is part of the project %q, which also has these open tickets (yours, and unassigned ones):\n%s\n\n"+
+		"Stay within %s. Work that belongs to one of those tickets is done there, by whoever works on it; "+
+		"if this ticket needs it, say so instead of doing it yourself.",
+		self.Project, strings.Join(lines, "\n"), key), len(lines)
+}

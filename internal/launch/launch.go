@@ -242,7 +242,23 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 	return rec, nil
 }
 
-// NewPlan renders branch, worktree, and prompt from the config templates.
+// WithSiblings puts what the agent should know about the other tickets in its project
+// where the prompt template says {siblings} — or after it, if it doesn't — and drops
+// the placeholder when there's nothing to say. A plan with no prompt (adopting) is
+// left alone.
+func (p Plan) WithSiblings(text string) Plan {
+	switch {
+	case p.Prompt == "":
+	case strings.Contains(p.Prompt, "{siblings}"):
+		p.Prompt = strings.TrimSpace(strings.ReplaceAll(p.Prompt, "{siblings}", text))
+	case text != "":
+		p.Prompt += "\n\n" + text
+	}
+	return p
+}
+
+// NewPlan renders branch, worktree, and prompt from the config templates; the prompt
+// keeps {siblings} for WithSiblings.
 func NewPlan(d tracker.IssueDetail, repo Repo, a agent.Adapter, cfg config.Config) Plan {
 	vars := map[string]string{
 		"key": d.Key, "key_lower": strings.ToLower(d.Key), "slug": Slug(d.Title),

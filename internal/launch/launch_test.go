@@ -136,8 +136,15 @@ func TestSlugAndPlan(t *testing.T) {
 	if p.Branch != "abc-12/fix-login" || p.Worktree != "/src/app/.worktrees/abc-12/fix-login" || p.Args[0] != "--x" {
 		t.Fatalf("plan %+v", p)
 	}
-	if want := "Work on ABC-12.\n\nTicket ABC-12: Fix login\nhttps://t.example/ABC-12\n\nBody"; p.Prompt != want {
-		t.Fatalf("prompt %q", p.Prompt)
+	if want := "Work on ABC-12.\n\nTicket ABC-12: Fix login\nhttps://t.example/ABC-12\n\nBody"; p.WithSiblings("").Prompt != want {
+		t.Fatalf("prompt %q", p.WithSiblings("").Prompt)
+	}
+	if got := p.WithSiblings("ABC-13 does the DNS").Prompt; !strings.HasSuffix(got, "Body\n\nABC-13 does the DNS") {
+		t.Fatalf("with siblings %q", got)
+	}
+	p.Prompt = "custom, no placeholder"
+	if got := p.WithSiblings("ABC-13 does the DNS").Prompt; got != "custom, no placeholder\n\nABC-13 does the DNS" {
+		t.Fatalf("appended %q", got)
 	}
 }
 

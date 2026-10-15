@@ -81,7 +81,7 @@ func (*Adapter) ParseHook(event string, payload []byte) (agent.HookEvent, error)
 			Input json.RawMessage `json:"tool_input"`
 		}
 		json.Unmarshal(payload, &p)
-		return agent.HookEvent{Status: agent.Working, Activity: p.Tool + ": " + summarize(p.Input)}, nil
+		return agent.HookEvent{Status: agent.Working, Activity: p.Tool + ": " + summarize(p.Input), Writes: writes(p.Tool, p.Input)}, nil
 	case "PostToolUse":
 		return agent.HookEvent{Status: agent.Working}, nil
 	case "Stop":
@@ -116,6 +116,23 @@ func (*Adapter) ParseHook(event string, payload []byte) (agent.HookEvent, error)
 		return agent.HookEvent{Status: agent.Waiting, Request: req, Activity: "asked: " + req.Tool + ": " + req.Summary}, nil
 	}
 	return agent.HookEvent{}, nil
+}
+
+// writes is the file a file-changing tool is about to write, if any.
+func writes(tool string, input json.RawMessage) []string {
+	switch tool {
+	case "Edit", "Write", "MultiEdit", "NotebookEdit":
+		var in struct {
+			File     string `json:"file_path"`
+			Notebook string `json:"notebook_path"`
+		}
+		if json.Unmarshal(input, &in) == nil {
+			if f := in.File + in.Notebook; f != "" {
+				return []string{f}
+			}
+		}
+	}
+	return nil
 }
 
 // summarize picks the field that says what the tool will touch.

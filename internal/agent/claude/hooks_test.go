@@ -132,3 +132,14 @@ func TestActivityLines(t *testing.T) {
 		}
 	}
 }
+
+func TestWritesFromFileTools(t *testing.T) {
+	e, _ := New().ParseHook("PreToolUse", []byte(`{"tool_name":"Write","tool_input":{"file_path":"/w/a.go","content":"x"}}`))
+	if len(e.Writes) != 1 || e.Writes[0] != "/w/a.go" {
+		t.Fatalf("write %+v", e.Writes)
+	}
+	e, _ = New().ParseHook("PreToolUse", []byte(`{"tool_name":"Read","tool_input":{"file_path":"/w/a.go"}}`))
+	if len(e.Writes) != 0 {
+		t.Fatalf("a read is no write: %+v", e.Writes)
+	}
+}

@@ -64,7 +64,9 @@ const DefaultPrompt = `{preamble}
 Ticket {key}: {title}
 {url}
 
-{description}`
+{description}
+
+{siblings}`
 
 func Default() Config {
 	return Config{

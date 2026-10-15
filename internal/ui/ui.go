@@ -105,16 +105,18 @@ type Model struct {
 	rows        []board.Row
 	cursor      int
 	offset      int
-	spin        int               // spinner frame for working agents
-	spinOn      bool              // a spinner tick is scheduled
-	light       bool              // the terminal has a light background
-	filter      string            // board rows narrowed to those matching it (/)
-	poolOpen    bool              // the "up for grabs" lanes show their tickets
-	folded      map[string]bool   // teams folded down to their header
-	poolFailing bool              // the last up-for-grabs fetch failed (already reported)
-	follow      string            // a ticket just created: the cursor goes to it when it shows up
-	teamWork    map[string][2]int // per team: agents working, waiting (for folded headers)
-	typing      bool              // the filter is being typed
+	spin        int                 // spinner frame for working agents
+	spinOn      bool                // a spinner tick is scheduled
+	light       bool                // the terminal has a light background
+	filter      string              // board rows narrowed to those matching it (/)
+	poolOpen    bool                // the "up for grabs" lanes show their tickets
+	folded      map[string]bool     // teams folded down to their header
+	poolFailing bool                // the last up-for-grabs fetch failed (already reported)
+	follow      string              // a ticket just created: the cursor goes to it when it shows up
+	written     map[string][]string // repo + file → lanes agents that changed it
+	warned      map[string]bool     // overlap warnings already given (agent, other agent, file)
+	teamWork    map[string][2]int   // per team: agents working, waiting (for folded headers)
+	typing      bool                // the filter is being typed
 	width       int
 	height      int
 	updated     time.Time

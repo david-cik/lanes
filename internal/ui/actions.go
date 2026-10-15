@@ -167,7 +167,7 @@ func (m *Model) focus(id, pane string) {
 // show puts an agent in the right slot without moving focus to it.
 func (m *Model) show(id, pane string) bool {
 	if st := m.hooks[id]; st != nil {
-		st.ready = false // you're looking at it now
+		st.ready, st.overlap = false, "" // you're looking at it now
 	}
 	if m.shown == id {
 		return true
@@ -352,6 +352,8 @@ func (m *Model) worktreePlan(d tracker.IssueDetail, a agent.Adapter) tea.Cmd {
 }
 
 func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
+	sib, n := m.siblings(p.Ticket.Key)
+	p = p.WithSiblings(sib)
 	if _, ok := p.Adapter.(agent.Hooker); ok {
 		p.HookBin, p.Socket = m.opt.HookBin, m.opt.Socket
 	}
@@ -377,6 +379,9 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 			"branch:   " + p.Branch + " (new)",
 			"worktree: " + home(p.Worktree),
 		}
+	}
+	if n > 0 && p.Prompt != "" {
+		lines = append(lines, fmt.Sprintf("context:  told about the %d other open ticket(s) in its project, to stay on %s", n, p.Ticket.Key))
 	}
 	if warning != "" {
 		lines = append(lines, "", waitS.Render("⚠ "+warning))

@@ -140,6 +140,14 @@ from `origin`'s default branch — or reuses an existing branch or worktree. It 
 touches your local default branch. The agent starts with a prompt built from the ticket.
 Only one agent can run in a worktree; a second agent on the same ticket gets a warning.
 
+**Tickets in the same project.** An agent's first prompt lists the other open tickets in its
+ticket's project that lanes sees (yours, and the unassigned ones up for grabs) — and which
+already have an agent — and tells it to stay on its own
+ticket, saying so rather than doing work that belongs to another. And if two agents on
+different tickets change the same file anyway (compared within a repo, so the same file in
+two worktrees counts), lanes warns once: the later one's row reads `⚑ same files as
+ABC-12`, and you get a notification. `s` tells it what to do.
+
 Claude asks whether to trust each new folder. lanes notices the prompt and tells you to
 answer it in the agent's pane; it never presses keys for you.
 
@@ -229,7 +237,8 @@ group_by_project = true       # within a lane, group tickets by project
 focus_key = ""                # optional single key that jumps board ⇄ agent, e.g. "C-]", "F12" ("" = prefix + h/l)
 
 # The first prompt an agent gets. Placeholders: {key} {key_lower} {slug} {title} {url}
-# {description} {preamble} {repo} {branch}
+# {description} {preamble} {repo} {branch} {siblings} (the project's other open tickets;
+# added at the end if the template leaves it out)
 prompt_template = """
 {preamble}
 
@@ -237,6 +246,8 @@ Ticket {key}: {title}
 {url}
 
 {description}
+
+{siblings}
 """
 preamble = ""                 # standing instructions, e.g. "Run the tests before finishing."
 

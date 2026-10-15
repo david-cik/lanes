@@ -240,6 +240,9 @@ func (m *Model) agentSegs(r board.Row, last bool, cont string) []seg {
 	if note := m.waitingNote(a); note != "" {
 		out = append(out, s(note, waitS))
 	}
+	if hs := m.hooks[hookKey(a)]; hs != nil && hs.overlap != "" {
+		out = append(out, s("  ⚑ same files as "+hs.overlap, waitS))
+	}
 	if a.Branch != "" && a.Branch != a.Name {
 		out = append(out, s("  "+a.Branch, faint))
 	}

@@ -26,6 +26,7 @@ type hookState struct {
 	pending  *pending
 	trust    bool       // the folder-trust prompt is on screen (hooks don't fire before it)
 	ready    bool       // finished a turn while you weren't looking; cleared when you look
+	overlap  string     // a ticket whose agent already changed a file this one is changing
 	activity []activity // newest last, at most activityMax
 }
 
@@ -111,6 +112,9 @@ func (m *Model) hook(ev hook.Event) tea.Cmd {
 		st.status, st.since = he.Status, m.now()
 	}
 	st.log(m.now(), he.Activity)
+	if len(he.Writes) > 0 {
+		cmd = tea.Batch(cmd, m.noteWrites(ev.Agent, st, he.Writes))
+	}
 	if he.Request != nil && ev.Reply != nil {
 		st.pending = &pending{id: ev.ID, tool: ev.Tool, req: *he.Request, reply: ev.Reply, at: m.now()}
 		cmd = m.notify(ev.Agent, fmt.Sprintf("%s: %s", he.Request.Tool, he.Request.Summary))
