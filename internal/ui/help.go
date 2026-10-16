@@ -76,7 +76,7 @@ var helpSections = []helpSection{
 	}},
 	{"Work", [][2]string{
 		{"n", "start an agent on the ticket"},
-		{"N", "create a new ticket"},
+		{"N", "new ticket, drafted by Claude (from a session too)"},
 		{"s", "send text to the agent"},
 		{"a", "answer a waiting request"},
 		{"x", "stop the agent (worktree is kept)"},

@@ -410,6 +410,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotPRs(msg)
 	case createdMsg:
 		return m, m.created(msg)
+	case draftMsg:
+		return m, m.gotDraft(msg.ticketDraft)
+	case editedMsg:
+		return m, m.edited(msg)
 	case termNoticeMsg:
 		return m, tea.Raw(msg.seq)
 	case claimedMsg:
