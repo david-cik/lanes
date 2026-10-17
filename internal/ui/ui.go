@@ -134,10 +134,10 @@ type Model struct {
 	launchSeq int                   // refreshes started at or before this predate the last launch
 	hooks     map[string]*hookState // by launch record ID
 
-	ctlLog    []ctlEvent        // what agents did lately, for `lanes wait`
-	ctlSeq    int               // the newest event's Seq
-	waiters   map[int]waiter    // `lanes wait` requests not answered yet, by request id
-	startNote map[string]string // ticket → instructions from an agent that asked to start one
+	ctlLog    []ctlEvent           // what agents did lately, for `lanes wait`
+	ctlSeq    int                  // the newest event's Seq
+	waiters   map[int]waiter       // `lanes wait` requests not answered yet, by request id
+	startNote map[string]startNote // ticket → what an agent that asked to start one said
 
 	details      bool // bottom half of the panel shows the selected row's details
 	detailSeq    int
@@ -156,7 +156,7 @@ type Model struct {
 
 func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
-		stopping: map[string]bool{}, hooks: map[string]*hookState{}, waiters: map[int]waiter{}, startNote: map[string]string{},
+		stopping: map[string]bool{}, hooks: map[string]*hookState{}, waiters: map[int]waiter{}, startNote: map[string]startNote{},
 		readers: opt.Readers, gitCache: map[string]cachedGit{}, prCache: map[string]cachedPR{},
 		issueDetails: map[string]cachedIssue{}, autoChecked: map[string]autoSeen{}}
 	if m.readers.Git == nil {

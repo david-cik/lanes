@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -149,5 +150,28 @@ func feedLaunch(m *Model, cmd tea.Cmd) {
 	case detailMsg, planMsg:
 		_, next := m.Update(msg)
 		feedLaunch(m, next)
+	}
+}
+
+func TestControlWaitAfterPanelRestart(t *testing.T) {
+	m, _, _ := hookModel(t)
+	event(m, "r1", "UserPromptSubmit")
+	event(m, "r1", "Stop")
+	got, _ := ctl(m, 1, "wait", `{"after":57}`) // a seq from the panel before this one
+	if evs, _ := (*got)["events"].([]any); len(evs) != 1 {
+		t.Fatalf("%v", *got)
+	}
+}
+
+func TestStaleStartNoteIgnored(t *testing.T) {
+	m, _, _ := hookModel(t)
+	m.opt.Config.LaunchDir = t.TempDir()
+	m.opt.Tracker = detailTracker{&fakeTracker{}}
+	m.startNote["ABC-1"] = startNote{"old instructions", m.now().Add(-time.Hour)}
+	m.cursorTo(t, "ABC-1 fix it")
+	_, cmd := m.Update(key("n"))
+	feedLaunch(m, cmd)
+	if text := strings.Join(m.modal.lines, "\n"); strings.Contains(text, "asked by") || strings.Contains(text, "old instructions") {
+		t.Fatalf("modal %q", text)
 	}
 }

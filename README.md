@@ -236,9 +236,12 @@ lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
 ```
 
 `lanes start` never starts anything by itself: the panel shows the usual start screen,
-marked as asked for by another agent with its instructions, and you say yes or no.
+marked as asked for by another agent with its instructions, and you say yes or no
+(instructions not used within two minutes are dropped).
 `lanes wait` answers with the events and a `seq`; pass it back as `--after` and nothing
-that happened in between is missed. It gives up after 90 seconds by default (under a
+that happened in between is missed (`"missed": true` says the panel had already
+dropped some, after a long gap; a `seq` from before the panel restarted gets everything
+since). It gives up after 90 seconds by default (under a
 tool's two-minute command limit), answering `"timeout": true`.
 
 ## Configuration

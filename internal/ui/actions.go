@@ -360,8 +360,13 @@ func (m *Model) worktreePlan(d tracker.IssueDetail, a agent.Adapter) tea.Cmd {
 func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	sib, n := m.siblings(p.Ticket.Key)
 	p = p.WithSiblings(sib)
-	asked, byAgent := m.startNote[p.Ticket.Key]
+	note, byAgent := m.startNote[p.Ticket.Key]
 	delete(m.startNote, p.Ticket.Key)
+	byAgent = byAgent && m.now().Sub(note.at) < startNoteTTL
+	asked := ""
+	if byAgent {
+		asked = note.text
+	}
 	if asked != "" {
 		p = p.WithInstructions(asked)
 	}

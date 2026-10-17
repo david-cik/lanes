@@ -34,6 +34,15 @@ type ctlEvent struct {
 
 const ctlLogMax = 200
 
+// startNote is what an agent asked for with `lanes start`. It only applies to a start
+// screen that follows soon, so an abandoned request can't ride along on a later s.
+type startNote struct {
+	text string
+	at   time.Time
+}
+
+const startNoteTTL = 2 * time.Minute
+
 type waiter struct {
 	reply func([]byte)
 	after int
@@ -152,8 +161,10 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 		}
 	case "wait":
 		w := waiter{reply: ev.Reply, after: m.ctlSeq, only: args.Only}
-		if args.After != nil {
+		if args.After != nil && *args.After <= m.ctlSeq {
 			w.after = *args.After
+		} else if args.After != nil { // from before the panel restarted: everything since is new
+			w.after = 0
 		}
 		if m.answerWaiter(w) {
 			return nil
@@ -192,7 +203,11 @@ func (m *Model) answerWaiter(w waiter) bool {
 	if len(got) == 0 {
 		return false
 	}
-	b, _ := json.Marshal(map[string]any{"events": got, "seq": got[len(got)-1].Seq})
+	ans := map[string]any{"events": got, "seq": got[len(got)-1].Seq}
+	if w.after < m.ctlLog[0].Seq-1 {
+		ans["missed"] = true // older events than these were already dropped
+	}
+	b, _ := json.Marshal(ans)
 	w.reply(b)
 	return true
 }
@@ -327,7 +342,7 @@ func (m *Model) ctlStart(ev hook.Event, key, instructions string) tea.Cmd {
 		return nil
 	}
 	issue := m.issues[i]
-	m.startNote[issue.Key] = strings.TrimSpace(instructions)
+	m.startNote[issue.Key] = startNote{strings.TrimSpace(instructions), m.now()}
 	cmd := m.startOn(issue)
 	ctlReply(ev, map[string]any{"asked": true, "ticket": issue.Key,
 		"next": "the user confirms in the lanes panel; `lanes wait` reports a \"started\" event with the new agent's id"})
