@@ -389,7 +389,7 @@ func setupFocus(tm tmux.Client, panel, key string, dim bool) (label, notice stri
 	setWinOpt("pane-border-style", "fg=brightblack")
 	if dim { // the pane you're not in fades: the one you are in stands out
 		setWinOpt("window-style", "fg=brightblack")
-		setWinOpt("window-active-style", "default")
+		setWinOpt("window-active-style", "fg=terminal") // "default" would inherit the grey
 	}
 	if session, err := tm.SessionOf(panel); err == nil {
 		double = guardPrefix(tm, session, panel, &undo)
