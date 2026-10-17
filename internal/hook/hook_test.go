@@ -162,3 +162,29 @@ func TestGlobalClient(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+func TestControlRoundTrip(t *testing.T) {
+	path := sock(t)
+	if _, err := Call(path, "agents", nil); err == nil || !strings.Contains(err.Error(), "no lanes panel") {
+		t.Fatalf("no panel: %v", err)
+	}
+	s, _ := Listen(path)
+	defer s.Close()
+	type res struct {
+		b   []byte
+		err error
+	}
+	done := make(chan res)
+	go func() {
+		b, err := Call(path, "wait", map[string]any{"only": []string{"ABC-1"}})
+		done <- res{b, err}
+	}()
+	ev := next(t, s)
+	if ev.Control != "wait" || ev.Agent != "" || string(ev.Payload) != `{"only":["ABC-1"]}` || ev.Reply == nil {
+		t.Fatalf("%+v", ev)
+	}
+	ev.Reply([]byte(`{"events":[]}`))
+	if r := <-done; r.err != nil || string(r.b) != `{"events":[]}` {
+		t.Fatalf("%q %v", r.b, r.err)
+	}
+}

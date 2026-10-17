@@ -72,6 +72,9 @@ func (m *Model) waitHook() tea.Cmd {
 }
 
 func (m *Model) hook(ev hook.Event) tea.Cmd {
+	if ev.Control != "" {
+		return m.control(ev)
+	}
 	st := m.hooks[ev.Agent]
 	if st == nil {
 		st = &hookState{}
@@ -105,6 +108,10 @@ func (m *Model) hook(ev hook.Event) tea.Cmd {
 	if he.Status != "" && he.Status != st.status {
 		if st.status == agent.Working && he.Status == agent.Idle { // a turn finished
 			cmd = m.turnDone(ev.Agent, st)
+			m.event("ready", ev.Agent, "")
+		}
+		if he.Status == agent.Done {
+			m.event("ended", ev.Agent, "")
 		}
 		if he.Status != agent.Idle { // working again, waiting, or ended: not "ready" any more
 			st.ready = false
@@ -118,6 +125,7 @@ func (m *Model) hook(ev hook.Event) tea.Cmd {
 	if he.Request != nil && ev.Reply != nil {
 		st.pending = &pending{id: ev.ID, tool: ev.Tool, req: *he.Request, reply: ev.Reply, at: m.now()}
 		cmd = m.notify(ev.Agent, fmt.Sprintf("%s: %s", he.Request.Tool, he.Request.Summary))
+		m.event("needs_you", ev.Agent, he.Request.Tool+": "+he.Request.Summary)
 	} else {
 		reply(ev, nil)
 	}
@@ -496,6 +504,7 @@ func (m *Model) trusted(msg trustMsg) tea.Cmd {
 		return nil
 	}
 	st.trust = true
+	m.event("needs_you", msg.id, "folder-trust prompt")
 	m.rebuild()
 	m.say("Claude asks whether to trust this new worktree — answer in the right pane (option 2 trusts it)", nil)
 	return tea.Batch(m.notify(msg.id, "folder-trust prompt"), m.watchTrustGone(msg.id, msg.pane))

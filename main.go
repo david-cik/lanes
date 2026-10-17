@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -73,6 +74,14 @@ func run() error {
   lanes link <session-id> <TICKET>       put a session on a ticket
   lanes unlink <session-id>              take a session off its ticket
 
+  For an agent coordinating others (they talk to the running panel; output is JSON):
+  lanes agents [--project NAME]          the board's tickets and the agents on them
+  lanes start <TICKET> [instructions…]   ask the user to start an agent on a ticket
+  lanes send <agent> <text…>             type text into an agent lanes started
+  lanes read <agent>                     an agent's latest reply
+  lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
+                                         block until an agent starts, finishes a turn, needs you, or ends
+
 flags:
 `)
 		flag.PrintDefaults()
@@ -82,6 +91,9 @@ flags:
 	}
 	if len(os.Args) > 1 && (os.Args[1] == "sessions" || os.Args[1] == "link" || os.Args[1] == "unlink") {
 		return sessionsCommand(os.Args[1], os.Args[2:])
+	}
+	if len(os.Args) > 1 && slices.Contains([]string{"agents", "start", "send", "read", "wait"}, os.Args[1]) {
+		return controlCommand(os.Args[1], os.Args[2:])
 	}
 	flag.Parse()
 
@@ -226,6 +238,63 @@ func takeOver(tm tmux.Client, panel string) (func(), error) {
 		return nil, err
 	}
 	return func() { tm.UnsetOpt(panel, tmux.OptPanel) }, nil
+}
+
+// controlCommand is `lanes agents|start|send|read|wait`: requests to the running
+// panel, so an agent can watch and steer the others. An agent is named by the id
+// `lanes agents` gives, a prefix of it, or its ticket.
+func controlCommand(cmd string, args []string) error {
+	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+	project := fs.String("project", "", "only this project's tickets")
+	after := fs.Int("after", -1, "report events after this seq (from the last answer); default: only new ones")
+	timeout := fs.Duration("timeout", 90*time.Second, "give up waiting after this long (under a 2-minute tool timeout)")
+	fs.Parse(args)
+	rest, req := fs.Args(), map[string]any{}
+	usage := map[string]string{"agents": "lanes agents [--project NAME]", "start": "lanes start <TICKET> [instructions…]",
+		"send": "lanes send <agent> <text…>", "read": "lanes read <agent>", "wait": "lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]"}
+	bad := false
+	switch cmd {
+	case "agents":
+		req["project"], bad = *project, len(rest) > 0
+	case "start":
+		bad = len(rest) < 1
+		if !bad {
+			req["ticket"], req["text"] = rest[0], strings.Join(rest[1:], " ")
+		}
+	case "send":
+		bad = len(rest) < 2
+		if !bad {
+			req["agent"], req["text"] = rest[0], strings.Join(rest[1:], " ")
+		}
+	case "read":
+		bad = len(rest) != 1
+		if !bad {
+			req["agent"] = rest[0]
+		}
+	case "wait":
+		req["only"], req["timeout"] = rest, timeout.Seconds()
+		if *after >= 0 {
+			req["after"] = *after
+		}
+	}
+	if bad {
+		return fmt.Errorf("usage: %s", usage[cmd])
+	}
+	out, err := hook.Call(config.SocketPath(), cmd, req)
+	if err != nil {
+		return err
+	}
+	var e struct{ Error string }
+	if json.Unmarshal(out, &e) == nil && e.Error != "" {
+		return errors.New(e.Error)
+	}
+	var v any
+	if err := json.Unmarshal(out, &v); err != nil {
+		return err
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
 }
 
 // sessionsCommand is `lanes sessions`, `lanes link`, `lanes unlink`: what a Claude

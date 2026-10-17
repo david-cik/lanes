@@ -350,3 +350,37 @@ func FileKeys(path string, prefixes map[string]bool) (Result, error) {
 	}
 	return out, nil
 }
+
+// LastReply is what the assistant wrote since the last prompt typed into the session at
+// path (its text, not its tool calls), read from the end of the transcript.
+func LastReply(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	const tail = 4 << 20
+	if fi, err := f.Stat(); err == nil && fi.Size() > tail {
+		f.Seek(-tail, io.SeekEnd)
+	}
+	var out []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	for sc.Scan() {
+		if _, ok := typed(sc.Bytes()); ok {
+			out = out[:0]
+			continue
+		}
+		var e entry
+		var parts []piece
+		if json.Unmarshal(sc.Bytes(), &e) != nil || e.Type != "assistant" || json.Unmarshal(e.Message.Content, &parts) != nil {
+			continue
+		}
+		for _, p := range parts {
+			if p.Type == "text" && strings.TrimSpace(p.Text) != "" {
+				out = append(out, strings.TrimSpace(p.Text))
+			}
+		}
+	}
+	return strings.Join(out, "\n\n")
+}

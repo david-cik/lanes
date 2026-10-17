@@ -1,0 +1,153 @@
+package ui
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/david-cik/lanes/internal/hook"
+)
+
+// ctl sends control request op with args and returns where its answer lands (nil
+// until answered) and the command it returned.
+func ctl(m *Model, id int, op, args string) (*map[string]any, tea.Cmd) {
+	got := new(map[string]any)
+	ev := hook.Event{ID: id, Control: op, Payload: []byte(args), Reply: func(b []byte) {
+		if *got == nil {
+			json.Unmarshal(b, got)
+		}
+	}}
+	_, cmd := m.Update(hookMsg(ev))
+	return got, cmd
+}
+
+func TestControlAgentsListsTicketsAndAgents(t *testing.T) {
+	m, _, _ := hookModel(t)
+	event(m, "r1", "UserPromptSubmit")
+	got, _ := ctl(m, 1, "agents", `{}`)
+	b, _ := json.Marshal(*got)
+	s := string(b)
+	for _, want := range []string{`"key":"ABC-1"`, `"id":"r1"`, `"id":"r2"`, `"status":"working"`, `"id":"claude:x9"`, `"lanes":false`} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %s in %s", want, s)
+		}
+	}
+	got, _ = ctl(m, 2, "agents", `{"project":"Nope"}`)
+	if b, _ := json.Marshal(*got); !strings.Contains(string(b), `"tickets":[]`) || !strings.Contains(string(b), `"unlinked":[]`) {
+		t.Fatalf("%s", b)
+	}
+}
+
+func TestControlWait(t *testing.T) {
+	m, _, _ := hookModel(t)
+	only2, _ := ctl(m, 1, "wait", `{"only":["r2"]}`)
+	any1, _ := ctl(m, 2, "wait", `{}`)
+	if *any1 != nil {
+		t.Fatalf("answered before anything happened: %v", *any1)
+	}
+	event(m, "r1", "UserPromptSubmit")
+	event(m, "r1", "Stop")
+	evs, _ := (*any1)["events"].([]any)
+	if len(evs) != 1 || evs[0].(map[string]any)["kind"] != "ready" || evs[0].(map[string]any)["ticket"] != "ABC-1" {
+		t.Fatalf("%v", *any1)
+	}
+	if *only2 != nil {
+		t.Fatalf("woke for another agent: %v", *only2)
+	}
+	seq := int((*any1)["seq"].(float64))
+	// Missed while not waiting: a wait from an earlier seq answers at once.
+	again, _ := ctl(m, 3, "wait", `{"after":`+itoa(seq-1)+`}`)
+	if *again == nil {
+		t.Fatal("event before the wait was lost")
+	}
+	m.Update(hookMsg(hook.Event{ID: 1, Control: "wait", Closed: true})) // that caller hung up
+	if _, ok := m.waiters[1]; ok {
+		t.Fatal("hung-up waiter kept")
+	}
+	late, _ := ctl(m, 4, "wait", `{"timeout":0.01}`)
+	m.Update(ctlTimeoutMsg{4})
+	if (*late)["timeout"] != true || int((*late)["seq"].(float64)) != seq {
+		t.Fatalf("%v", *late)
+	}
+}
+
+func itoa(i int) string { b, _ := json.Marshal(i); return string(b) }
+
+func TestControlSend(t *testing.T) {
+	m, ft, _ := hookModel(t)
+	got, cmd := ctl(m, 1, "send", `{"agent":"r1","text":"carry on"}`)
+	runCmd(cmd)
+	if (*got)["sent"] != true || ft.log[len(ft.log)-1] != "text %1 carry on" {
+		t.Fatalf("%v %v", *got, ft.log)
+	}
+	for ref, want := range map[string]string{"ABC-1": "matches 2 agents", "claude:x9": "not started by lanes", "zzz": "no agent matches"} {
+		got, _ := ctl(m, 2, "send", `{"agent":"`+ref+`","text":"hi"}`)
+		if e, _ := (*got)["error"].(string); !strings.Contains(e, want) {
+			t.Fatalf("%s: %v", ref, *got)
+		}
+	}
+}
+
+func TestControlRead(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	os.MkdirAll(filepath.Join(dir, "projects", "w"), 0o700)
+	os.WriteFile(filepath.Join(dir, "projects", "w", "s1.jsonl"), []byte(
+		`{"type":"user","message":{"content":"go"}}`+"\n"+
+			`{"type":"assistant","message":{"content":[{"type":"text","text":"all done"}]}}`+"\n"), 0o600)
+	m, _, _ := hookModel(t)
+	got, cmd := ctl(m, 1, "read", `{"agent":"r1"}`)
+	runCmd(cmd)
+	if (*got)["reply"] != "all done" || (*got)["ticket"] != "ABC-1" {
+		t.Fatalf("%v", *got)
+	}
+}
+
+func TestControlStartAsksTheUser(t *testing.T) {
+	m, ft, notes := hookModel(t)
+	m.opt.Config.LaunchDir = t.TempDir()
+	m.opt.Tracker = detailTracker{&fakeTracker{}}
+	waiting, _ := ctl(m, 1, "wait", `{}`)
+	got, start := ctl(m, 2, "start", `{"ticket":"abc-1","text":"only the DNS part"}`)
+	if (*got)["asked"] != true {
+		t.Fatalf("%v", *got)
+	}
+	// detail → folder plan → the usual confirmation, saying who asked and what it said
+	feedLaunch(m, start)
+	text := strings.Join(m.modal.lines, "\n")
+	if !strings.Contains(text, "asked by: another agent") || !strings.Contains(text, "told:     only the DNS part") {
+		t.Fatalf("modal %q", text)
+	}
+	if len(*notes) == 0 || !strings.Contains((*notes)[len(*notes)-1], "asks to start work on ABC-1") {
+		t.Fatalf("notes %v", *notes)
+	}
+	_, cmd := m.Update(key("y"))
+	m.Update(cmd()) // launchedMsg
+	if !strings.Contains(strings.Join(ft.argv, " "), "only the DNS part") {
+		t.Fatalf("instructions not in the agent's prompt: %q", ft.argv)
+	}
+	evs, _ := (*waiting)["events"].([]any)
+	if len(evs) != 1 || evs[0].(map[string]any)["kind"] != "started" {
+		t.Fatalf("%v", *waiting)
+	}
+}
+
+// feedLaunch runs cmd and feeds the launch-flow messages it produces back in.
+func feedLaunch(m *Model, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		for _, c := range msg {
+			feedLaunch(m, c)
+		}
+	case detailMsg, planMsg:
+		_, next := m.Update(msg)
+		feedLaunch(m, next)
+	}
+}

@@ -134,6 +134,11 @@ type Model struct {
 	launchSeq int                   // refreshes started at or before this predate the last launch
 	hooks     map[string]*hookState // by launch record ID
 
+	ctlLog    []ctlEvent        // what agents did lately, for `lanes wait`
+	ctlSeq    int               // the newest event's Seq
+	waiters   map[int]waiter    // `lanes wait` requests not answered yet, by request id
+	startNote map[string]string // ticket → instructions from an agent that asked to start one
+
 	details      bool // bottom half of the panel shows the selected row's details
 	detailSeq    int
 	readers      Readers
@@ -151,7 +156,7 @@ type Model struct {
 
 func New(opt Options) *Model {
 	m := &Model{opt: opt, label: opt.Assignee, issues: opt.Issues, updated: time.Now(), now: time.Now, width: 80, height: 24,
-		stopping: map[string]bool{}, hooks: map[string]*hookState{},
+		stopping: map[string]bool{}, hooks: map[string]*hookState{}, waiters: map[int]waiter{}, startNote: map[string]string{},
 		readers: opt.Readers, gitCache: map[string]cachedGit{}, prCache: map[string]cachedPR{},
 		issueDetails: map[string]cachedIssue{}, autoChecked: map[string]autoSeen{}}
 	if m.readers.Git == nil {
@@ -386,6 +391,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.hook(hook.Event(msg)), m.waitHook())
 	case trustMsg:
 		return m, m.trusted(msg)
+	case ctlTimeoutMsg:
+		m.ctlTimeout(msg.id)
 	case detailTick:
 		if msg.seq == m.detailSeq && m.details {
 			return m, m.fetchDetails(false)

@@ -219,6 +219,28 @@ lanes unlink <session-id>          # take it off its ticket
 Copy `skills/lanes` into `~/.claude/skills/` and you can just tell Claude "attach my
 session about the export bug to ABC-12". A running panel shows the change within seconds.
 
+### Letting one agent coordinate others
+
+A running panel also takes requests from other programs, so one agent can look after a
+project's tickets: see where each stands, start agents, talk to them, and wait for them.
+Output is JSON. An agent is named by the `id` that `lanes agents` lists, a prefix of it,
+or its ticket key when one agent is on that ticket.
+
+```sh
+lanes agents [--project NAME]         # tickets (state, project) with their agents: status, ready, waiting, recent activity
+lanes start <TICKET> [instructions…]  # ask you to start an agent on a ticket; the instructions go after its first prompt
+lanes send <agent> <text…>            # type text into an agent lanes started, and press Enter
+lanes read <agent>                    # what the agent wrote since its last prompt
+lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
+                                      # block until an agent starts, finishes a turn (ready), needs you, or ends
+```
+
+`lanes start` never starts anything by itself: the panel shows the usual start screen,
+marked as asked for by another agent with its instructions, and you say yes or no.
+`lanes wait` answers with the events and a `seq`; pass it back as `--after` and nothing
+that happened in between is missed. It gives up after 90 seconds by default (under a
+tool's two-minute command limit), answering `"timeout": true`.
+
 ## Configuration
 
 `~/.config/lanes/config.toml` (or `$XDG_CONFIG_HOME/lanes/config.toml`). Every key is
@@ -270,7 +292,8 @@ hand.
 ## What lanes never does
 
 - Store or evaluate permission rules — Claude does, through its own settings.
-- Press keys in an agent's terminal for you.
+- Press keys in an agent's terminal on its own: only text you send (`s`), or an agent you
+  run sends (`lanes send`).
 - Edit your Claude settings, except `install-hooks` / `uninstall-hooks` after you agree.
 - Delete worktrees or branches.
 - Write to your issue tracker, except creating a ticket you ask for (`N`) and claiming an

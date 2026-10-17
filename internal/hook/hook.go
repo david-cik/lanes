@@ -5,6 +5,9 @@
 // for one reply line {stdout}, prints stdout, and exits. Every failure (no panel,
 // panel gone mid-wait, bad reply) ends with exit 0 and no output, so the tool carries
 // on exactly as if lanes weren't there.
+//
+// The same socket takes control requests (`lanes agents`, `lanes start`, …, see Call):
+// one line {control, args}, answered with one reply line whenever the panel is done.
 package hook
 
 import (
@@ -25,10 +28,12 @@ const maxPayload = 1 << 20
 var Blocking = map[string]bool{"PermissionRequest": true}
 
 type message struct {
-	Agent   string          `json:"agent"`
-	Tool    string          `json:"tool"`
-	Event   string          `json:"event"`
-	Payload json.RawMessage `json:"payload"`
+	Agent   string          `json:"agent,omitempty"`
+	Tool    string          `json:"tool,omitempty"`
+	Event   string          `json:"event,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+	Control string          `json:"control,omitempty"` // a control request instead of a hook event
+	Args    json.RawMessage `json:"args,omitempty"`
 }
 
 type reply struct {
@@ -68,7 +73,7 @@ func Client(stdin io.Reader, stdout io.Writer, socket, agentID, tool, event stri
 		return
 	}
 	defer conn.Close()
-	line, _ := json.Marshal(message{agentID, tool, event, payload})
+	line, _ := json.Marshal(message{Agent: agentID, Tool: tool, Event: event, Payload: payload})
 	conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	if _, err := conn.Write(append(line, '\n')); err != nil || !Blocking[event] {
 		return
@@ -84,7 +89,35 @@ func Client(stdin io.Reader, stdout io.Writer, socket, agentID, tool, event stri
 	}
 }
 
-// Event is one hook call received by the panel.
+// Call sends control request op to the panel listening on socket and returns its
+// answer. It waits as long as the panel takes (a wait request answers when something
+// happens), or until the panel goes away.
+func Call(socket, op string, args any) ([]byte, error) {
+	a, err := json.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.DialTimeout("unix", socket, 500*time.Millisecond)
+	if err != nil {
+		return nil, errors.New("no lanes panel is running")
+	}
+	defer conn.Close()
+	line, _ := json.Marshal(message{Control: op, Args: a})
+	if _, err := conn.Write(append(line, '\n')); err != nil {
+		return nil, err
+	}
+	b, err := bufio.NewReaderSize(conn, maxPayload).ReadBytes('\n')
+	if err != nil {
+		return nil, errors.New("the lanes panel hung up without answering")
+	}
+	var r reply
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, err
+	}
+	return []byte(r.Stdout), nil
+}
+
+// Event is one hook call, or control request, received by the panel.
 type Event struct {
 	ID      int // unique per connection
 	Agent   string
@@ -97,6 +130,9 @@ type Event struct {
 	// Closed is true for the synthetic event sent when a blocking connection ends
 	// before it was answered (the hook timed out or the tool moved on).
 	Closed bool
+	// Control is a control request's operation (Payload holds its args); it always
+	// has a Reply, which carries the answer.
+	Control string
 }
 
 type Server struct {
@@ -151,7 +187,7 @@ func (s *Server) handle(c net.Conn) {
 	c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	b, err := bufio.NewReaderSize(c, maxPayload+4096).ReadBytes('\n')
 	var m message
-	if err != nil || json.Unmarshal(b, &m) != nil || m.Agent == "" {
+	if err != nil || json.Unmarshal(b, &m) != nil || (m.Agent == "" && m.Control == "") {
 		c.Close()
 		return
 	}
@@ -160,8 +196,11 @@ func (s *Server) handle(c net.Conn) {
 	s.next++
 	id := s.next
 	s.mu.Unlock()
-	ev := Event{ID: id, Agent: m.Agent, Tool: m.Tool, Event: m.Event, Payload: m.Payload}
-	if !Blocking[m.Event] {
+	ev := Event{ID: id, Agent: m.Agent, Tool: m.Tool, Event: m.Event, Payload: m.Payload, Control: m.Control}
+	if m.Control != "" {
+		ev.Payload = m.Args
+	}
+	if !Blocking[m.Event] && m.Control == "" {
 		c.Close()
 		s.send(ev)
 		return
@@ -194,7 +233,7 @@ func (s *Server) handle(c net.Conn) {
 	case <-answered:
 	default:
 		once.Do(func() { s.drop(id) })
-		s.send(Event{ID: id, Agent: m.Agent, Tool: m.Tool, Event: m.Event, Closed: true})
+		s.send(Event{ID: id, Agent: m.Agent, Tool: m.Tool, Event: m.Event, Control: m.Control, Closed: true})
 	}
 }
 

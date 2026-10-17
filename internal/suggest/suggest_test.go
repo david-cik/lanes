@@ -155,3 +155,19 @@ func TestPromptsAndAnyKey(t *testing.T) {
 		t.Fatalf("any-key scoring: %+v", r)
 	}
 }
+
+func TestLastReply(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "s.jsonl")
+	os.WriteFile(p, []byte(strings.Join([]string{
+		line("user", `"first"`),
+		line("assistant", `[{"type":"text","text":"old answer"}]`),
+		line("user", `"second"`),
+		line("assistant", `[{"type":"text","text":"looking"},{"type":"tool_use","input":{}}]`),
+		line("user", `[{"type":"tool_result","content":"x"}]`),
+		`{"type":"user","isMeta":true,"message":{"content":"injected"}}`,
+		line("assistant", `[{"type":"text","text":"done: it works"}]`),
+	}, "\n")), 0o600)
+	if got := LastReply(p); got != "looking\n\ndone: it works" {
+		t.Fatalf("%q", got)
+	}
+}

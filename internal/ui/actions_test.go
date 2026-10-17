@@ -23,11 +23,12 @@ type fakeTmux struct {
 	sessions map[string]bool
 	gone     map[string]bool // panes that no longer exist
 	screen   string
+	argv     []string // the last session's command
 }
 
 func (f *fakeTmux) rec(s string) error { f.log = append(f.log, s); return nil }
 func (f *fakeTmux) NewSession(name, cwd string, env, argv []string) (string, error) {
-	f.sessions[name] = true
+	f.sessions[name], f.argv = true, argv
 	return "%9", f.rec("new " + name)
 }
 func (f *fakeTmux) SetOpt(p, k, v string) error { return f.rec("opt " + p + " " + k + "=" + v) }

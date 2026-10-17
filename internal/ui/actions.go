@@ -239,6 +239,12 @@ func (m *Model) newAgent() tea.Cmd {
 		m.say("", fmt.Errorf("select a ticket"))
 		return nil
 	}
+	return m.startOn(issue)
+}
+
+// startOn starts an agent on issue, after asking which tool (if there's a choice) and
+// confirming the plan.
+func (m *Model) startOn(issue tracker.Issue) tea.Cmd {
 	ads := slices.Clone(m.opt.Adapters)
 	slices.SortStableFunc(ads, func(a, b agent.Adapter) int { // default agent first
 		return boolInt(b.Name() == m.opt.Config.DefaultAgent) - boolInt(a.Name() == m.opt.Config.DefaultAgent)
@@ -354,6 +360,11 @@ func (m *Model) worktreePlan(d tracker.IssueDetail, a agent.Adapter) tea.Cmd {
 func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	sib, n := m.siblings(p.Ticket.Key)
 	p = p.WithSiblings(sib)
+	asked, byAgent := m.startNote[p.Ticket.Key]
+	delete(m.startNote, p.Ticket.Key)
+	if asked != "" {
+		p = p.WithInstructions(asked)
+	}
 	if _, ok := p.Adapter.(agent.Hooker); ok {
 		p.HookBin, p.Socket = m.opt.HookBin, m.opt.Socket
 	}
@@ -378,6 +389,12 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 			"repo:     " + home(p.Repo.Path),
 			"branch:   " + p.Branch + " (new)",
 			"worktree: " + home(p.Worktree),
+		}
+	}
+	if byAgent {
+		lines = append(lines, "asked by: another agent (lanes start)")
+		if asked != "" {
+			lines = append(lines, "told:     "+asked)
 		}
 	}
 	if n > 0 && p.Prompt != "" {
@@ -493,6 +510,7 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 		}
 	}
 	m.focus(msg.rec.ID, msg.rec.Pane)
+	m.event("started", msg.rec.ID, "")
 	m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)
 	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane), msg.claim) // claim only a ticket an agent started on
 }

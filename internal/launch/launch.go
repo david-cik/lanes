@@ -242,6 +242,12 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 	return rec, nil
 }
 
+// WithInstructions adds text to the end of the first prompt, or makes it the prompt.
+func (p Plan) WithInstructions(text string) Plan {
+	p.Prompt = strings.TrimSpace(p.Prompt + "\n\n" + text)
+	return p
+}
+
 // WithSiblings puts what the agent should know about the other tickets in its project
 // where the prompt template says {siblings} — or after it, if it doesn't — and drops
 // the placeholder when there's nothing to say. A plan with no prompt (adopting) is
