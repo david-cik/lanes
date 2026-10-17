@@ -167,7 +167,7 @@ flags:
 			return err
 		}
 		opt.Tmux, opt.Panel, opt.Placeholder = tm, panel, placeholder
-		label, notice, double, restore := setupFocus(tm, panel, cfg.FocusKey)
+		label, notice, double, restore := setupFocus(tm, panel, cfg.FocusKey, cfg.DimInactive)
 		defer restore()
 		opt.FocusLabel, opt.DoublePrefix = label, double
 		opt.Prefix = keyLabel(tm.GlobalOpt("prefix"))
@@ -333,7 +333,7 @@ func hooksCommand(uninstall bool, args []string) error {
 
 // paneTitle is the line over each pane in the lanes window: the active one is bold
 // with a filled dot, and an agent's shows its title.
-const paneTitle = " #{?pane_active,#[bold]● ,#[dim]○ }#{?@lanes_panel,board,agent#{?@lanes_agent, · #{=/60/…:pane_title},}}#[default] "
+const paneTitle = "#{?pane_active,#[reverse bold] ● ,#[dim] ○ }#{?@lanes_panel,board,agent#{?@lanes_agent, · #{=/60/…:pane_title},}} #[default]"
 
 // placeholderScript draws the empty right pane: the lanes mark and how to fill it.
 // $1 is the pane keys, passed as an argument so no shell parses it.
@@ -346,7 +346,7 @@ exec cat >/dev/null`
 // panel runs in: mouse support on, and one key (focus_key) that jumps between them,
 // with a reminder in the status bar. Everything is restored when lanes quits; the key
 // only acts in this session and passes through everywhere else.
-func setupFocus(tm tmux.Client, panel, key string) (label, notice string, double bool, restore func()) {
+func setupFocus(tm tmux.Client, panel, key string, dim bool) (label, notice string, double bool, restore func()) {
 	var undo []func()
 	restore = func() {
 		for i := len(undo) - 1; i >= 0; i-- {
@@ -384,6 +384,12 @@ func setupFocus(tm tmux.Client, panel, key string) (label, notice string, double
 	setWinOpt("pane-border-status", "top")
 	setWinOpt("pane-border-indicators", "arrows")
 	setWinOpt("pane-border-format", paneTitle)
+	setWinOpt("pane-active-border-style", "fg=blue,bold") // the divider lights up on your side
+	setWinOpt("pane-border-style", "fg=brightblack")
+	if dim { // the pane you're not in fades: the one you are in stands out
+		setWinOpt("window-style", "fg=brightblack")
+		setWinOpt("window-active-style", "default")
+	}
 	if session, err := tm.SessionOf(panel); err == nil {
 		double = guardPrefix(tm, session, panel, &undo)
 	}

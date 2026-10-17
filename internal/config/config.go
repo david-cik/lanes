@@ -42,6 +42,7 @@ type Config struct {
 	EndedDays        int      `toml:"ended_days"`       // how long ended sessions stay under their ticket (0 = not at all)
 	GroupByProject   bool     `toml:"group_by_project"` // within a lane, group tickets by project
 	NotifyVia        string   `toml:"notify_via"`       // desktop notifications: "auto", "terminal" (escape code), "system"
+	DimInactive      bool     `toml:"dim_inactive"`     // fade the pane (board or agent) you're not in
 	FocusKey         string   `toml:"focus_key"`        // optional tmux key that jumps between board and agent ("" = use the tmux prefix + h/l or arrows)
 
 	Agents map[string]AgentConfig `toml:"agents"`
@@ -80,6 +81,7 @@ func Default() Config {
 		PromptTemplate:   DefaultPrompt,
 		EndedDays:        3,
 		GroupByProject:   true,
+		DimInactive:      true,
 	}
 }
 

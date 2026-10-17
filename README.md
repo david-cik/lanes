@@ -111,8 +111,10 @@ to it, scroll to move, click a key in the footer to press it, click a choice in 
 
 **Move between the board and the agent pane with your tmux prefix and `h` / `l`**, as in
 herdr (`Ctrl-b h` / `Ctrl-b l` by default; the arrows work too), with the prefix pressed
-twice (`Ctrl-b Ctrl-b`), **or by clicking either one**. A thin title over each pane marks
-the one you're in: `● board` / `○ agent · <its title>`. `prefix z` zooms the agent pane.
+twice (`Ctrl-b Ctrl-b`), **or by clicking either one**. The pane you're in is easy to
+tell: its title over the pane is a solid bar (` ● board ` / ` ● agent · <its title> `),
+the divider lights up on its side, and the other pane fades (`dim_inactive = false` keeps
+it as is). `prefix z` zooms the agent pane.
 
 While it runs, lanes turns the mouse on for its tmux session and borrows those keys
 there only: elsewhere they keep tmux's defaults (the prefix pressed twice still sends the
@@ -231,6 +233,7 @@ branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
 notify_via = "auto"           # how: "auto" (the terminal's own, if known), "terminal", "system"
+dim_inactive = true           # fade the pane (board or agent) you're not in
 auto_link = false             # link new Claude sessions whose transcript clearly points at one open ticket
 ended_days = 3                # how long ended sessions stay under their ticket (0 = not at all)
 group_by_project = true       # within a lane, group tickets by project
