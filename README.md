@@ -113,8 +113,8 @@ to it, scroll to move, click a key in the footer to press it, click a choice in 
 herdr (`Ctrl-b h` / `Ctrl-b l` by default; the arrows work too), with the prefix pressed
 twice (`Ctrl-b Ctrl-b`), **or by clicking either one**. The pane you're in is easy to
 tell: its title over the pane is a solid bar (` ● board ` / ` ● agent · <its title> `),
-the divider lights up on its side, and the other pane fades (`dim_inactive = false` keeps
-it as is). `prefix z` zooms the agent pane.
+the divider lights up on its side, and the other pane's plain text turns grey
+(`dim_inactive = false` keeps it as is). `prefix z` zooms the agent pane.
 
 While it runs, lanes turns the mouse on for its tmux session and borrows those keys
 there only: elsewhere they keep tmux's defaults (the prefix pressed twice still sends the

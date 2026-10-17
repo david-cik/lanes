@@ -331,8 +331,8 @@ func hooksCommand(uninstall bool, args []string) error {
 	return install.Run(*path, bin, uninstall, *yes, os.Stdin, os.Stdout)
 }
 
-// paneTitle is the line over each pane in the lanes window: the active one is bold
-// with a filled dot, and an agent's shows its title.
+// paneTitle is the line over each pane in the lanes window: the active one is a solid
+// (reverse) bar with a filled dot, and an agent's shows its title.
 const paneTitle = "#{?pane_active,#[reverse bold] ● ,#[dim] ○ }#{?@lanes_panel,board,agent#{?@lanes_agent, · #{=/60/…:pane_title},}} #[default]"
 
 // placeholderScript draws the empty right pane: the lanes mark and how to fill it.
@@ -367,7 +367,8 @@ func setupFocus(tm tmux.Client, panel, key string, dim bool) (label, notice stri
 		})
 	}
 	setOpt("mouse", "on")
-	// A thin title over each pane marks the one you're in: ● board / ○ agent.
+	// The pane you're in stands out: a solid title bar (● board / ● agent), the divider
+	// lit on its side, and (dim_inactive) the other pane's plain text greyed.
 	setWinOpt := func(name, val string) {
 		prev, set := tm.WindowOpt(panel, name)
 		if tm.SetWindowOpt(panel, name, val) != nil {
