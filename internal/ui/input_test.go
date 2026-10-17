@@ -39,19 +39,23 @@ func TestMovingShowsAgentWithoutFocus(t *testing.T) {
 	}
 }
 
-func TestClickSelectsThenOpens(t *testing.T) {
+func TestClickingTheBoardStaysOnTheBoard(t *testing.T) {
 	m, ft := controlModel(t)
 	y := rowY(t, m, "two")
 	click(m, 5, y)
 	if r, _ := m.selected(); r.Agent == nil || r.Agent.Name != "two" {
 		t.Fatalf("selected %+v", r)
 	}
-	if strings.Contains(strings.Join(ft.log, "|"), "select") {
-		t.Fatalf("first click focused: %v", ft.log)
+	click(m, 5, y) // the same row again: it's shown already; you stay here
+	for _, c := range ft.log {
+		if strings.HasPrefix(c, "select ") {
+			t.Fatalf("a click in the board moved focus away: %v", ft.log)
+		}
 	}
-	click(m, 5, y)
-	if ft.log[len(ft.log)-1] != "select %2" {
-		t.Fatalf("second click didn't open: %v", ft.log)
+	click(m, 5, rowY(t, m, "ABC-1 fix it"))
+	click(m, 5, rowY(t, m, "ABC-1 fix it")) // a ticket clicked again: its card
+	if m.modal == nil || !strings.HasPrefix(m.modal.title, "ABC-1") {
+		t.Fatalf("no ticket card: %+v", m.modal)
 	}
 }
 

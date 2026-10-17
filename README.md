@@ -106,8 +106,10 @@ Status: a spinner while working, `✓` ready (finished a turn you haven't looked
 | `c` | on the start screen of an up-for-grabs ticket: claim it in Linear, or not |
 | `q` | quit (agents keep running in their own tmux sessions) |
 
-**Mouse:** click a row to select it (the agent shows on the right), click it again to go
-to it, scroll to move, click a key in the footer to press it, click a choice in a menu.
+**Mouse:** click a row to select it (its agent shows on the right). Clicking in the board
+keeps you in the board: to go to the agent, click its pane. Clicking the selected row
+again opens a ticket's card, folds a team or Up for grabs, or offers to resume an ended
+session. Scroll to move, click a key in the footer to press it, click a choice in a menu.
 
 **Move between the board and the agent pane with your tmux prefix and `h` / `l`**, as in
 herdr (`Ctrl-b h` / `Ctrl-b l` by default; the arrows work too), with the prefix pressed

@@ -153,8 +153,11 @@ func filterRows(rows []board.Row, f string) []board.Row {
 
 // --- mouse ---
 
-// click: a row selects it, the selected row opens it (like enter), a footer key
-// presses it, a modal's choice picks it.
+// click: a row selects it (its agent shows on the right), a footer key presses it, a
+// modal's choice picks it. A click in the board never takes you out of it — you clicked
+// the board to be in the board; click the agent pane to go there. So a second click
+// on the selected row only does what stays here: a ticket's card, folding a team or
+// Up for grabs, resuming an ended session.
 func (m *Model) click(ms tea.Mouse) tea.Cmd {
 	if ms.Button != tea.MouseLeft || m.review != nil {
 		return nil
@@ -177,7 +180,14 @@ func (m *Model) click(ms tea.Mouse) tea.Cmd {
 		return m.moveTo(i)
 	}
 	m.notice = ""
-	return m.focusSelected()
+	r := m.rows[m.cursor]
+	switch {
+	case r.Kind == board.TicketRow:
+		return m.ticketCard()
+	case r.Kind == board.TeamRow, isPoolLane(r), r.Kind == board.AgentRow && r.Agent.Ended:
+		return m.focusSelected() // fold / open / offer to resume: all stay on the board
+	}
+	return nil
 }
 
 func (m *Model) wheel(ms tea.Mouse) tea.Cmd {

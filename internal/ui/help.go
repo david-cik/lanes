@@ -65,7 +65,7 @@ var helpSections = []helpSection{
 		{"PgUp PgDn", "half a page (also ctrl+u ctrl+d)"},
 		{"[ ]", "previous / next team"},
 		{"/", "filter as you type (esc clears)"},
-		{"click", "select; click again to open; wheel scrolls"},
+		{"click", "select (again: ticket card, fold); wheel scrolls"},
 	}},
 	{"Look", [][2]string{
 		{"enter", "go to the agent (on a ticket: its agent)"},
