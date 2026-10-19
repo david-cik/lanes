@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -13,15 +14,17 @@ import (
 func (m *Model) footer() string { return strings.Join(m.footerItems(), " · ") }
 
 func (m *Model) footerItems() []string {
+	k := func(action, label string) string { return m.k(action) + " " + label }
 	if m.opt.Tmux == nil {
-		return []string{"d details", "t ticket", "T suggest", "u assignee", "? keys", "· read-only (start lanes in tmux to launch agents)"}
+		return []string{k("details", "details"), k("link", "ticket"), k("suggest", "suggest"), k("assignee", "assignee"), k("help", "keys"),
+			"· read-only (start lanes in tmux to launch agents)"}
 	}
 	var keys []string
 	if m.filter != "" {
-		keys = append(keys, "esc clear /"+m.filter)
+		keys = append(keys, "esc clear "+m.k("filter")+m.filter)
 	}
 	if m.waitingCount() > 0 {
-		keys = append(keys, "a approve")
+		keys = append(keys, k("approve", "approve"))
 	}
 	r, ok := m.selected()
 	switch {
@@ -35,20 +38,20 @@ func (m *Model) footerItems() []string {
 	case isPoolLane(r):
 		keys = append(keys, "enter show")
 	case r.Kind == board.TicketRow && r.Issue.Pool:
-		keys = append(keys, "enter start", "d details", "o open")
+		keys = append(keys, "enter start", k("details", "details"), k("open", "open"))
 	case r.Kind == board.TicketRow:
-		keys = append(keys, "enter agent", "n new", "i info", "p PRs", "o open")
+		keys = append(keys, "enter agent", k("start", "new"), k("info", "info"), k("prs", "PRs"), k("open", "open"))
 	case r.Kind == board.AgentRow && r.Agent.Ended:
-		keys = append(keys, "enter resume", "t ticket", "d details")
+		keys = append(keys, "enter resume", k("link", "ticket"), k("details", "details"))
 	case r.Kind == board.AgentRow && r.Agent.RecordID != "":
-		keys = append(keys, "enter go to", "s send", "x stop", "t ticket", "d details")
+		keys = append(keys, "enter go to", k("send", "send"), k("stop", "stop"), k("link", "ticket"), k("details", "details"))
 	case r.Kind == board.AgentRow:
-		keys = append(keys, "A adopt", "t ticket", "d details")
+		keys = append(keys, k("adopt", "adopt"), k("link", "ticket"), k("details", "details"))
 	}
 	if m.opt.FocusLabel != "" {
 		keys = append(keys, focusItem(m.opt.FocusLabel))
 	}
-	keys = append(keys, "? keys") // q quit and the rest are in ?
+	keys = append(keys, k("help", "keys")) // quit and the rest are in the key list
 	return keys
 }
 
@@ -64,45 +67,45 @@ var helpSections = []helpSection{
 		{"g G", "top / bottom"},
 		{"PgUp PgDn", "half a page (also ctrl+u ctrl+d)"},
 		{"[ ]", "previous / next team"},
-		{"/", "filter as you type (esc clears)"},
+		{"@filter", "filter as you type (esc clears)"},
 		{"click", "select (again: ticket card, fold); wheel scrolls"},
 	}},
 	{"Look", [][2]string{
 		{"enter", "go to the agent (on a ticket: its agent)"},
-		{"i", "the ticket: state, PRs, description"},
-		{"o", "open the ticket in the browser"},
-		{"p", "the ticket's pull requests"},
-		{"d", "details under the board (git, PR, activity)"},
+		{"@info", "the ticket: state, PRs, description"},
+		{"@open", "open the ticket in the browser"},
+		{"@prs", "the ticket's pull requests"},
+		{"@details", "details under the board (git, PR, activity)"},
 	}},
 	{"Work", [][2]string{
-		{"n", "start an agent on the ticket"},
-		{"N", "new ticket, drafted by Claude (from a session too)"},
-		{"s", "send text to the agent"},
-		{"a", "answer a waiting request"},
-		{"x", "stop the agent (worktree is kept)"},
-		{"A", "adopt a session lanes didn't start"},
-		{"C", "the project's coordinator: an agent that runs the others"},
+		{"@start", "start an agent on the ticket"},
+		{"@new_ticket", "new ticket, drafted by Claude (from a session too)"},
+		{"@send", "send text to the agent"},
+		{"@approve", "answer a waiting request"},
+		{"@stop", "stop the agent (worktree is kept)"},
+		{"@adopt", "adopt a session lanes didn't start"},
+		{"@coordinator", "the project's coordinator: an agent that runs the others"},
 	}},
 	{"Sessions on tickets", [][2]string{
-		{"t", "move a session to a ticket, or take it off"},
-		{"T", "suggest tickets for unlinked sessions"},
-		{":", "ask Claude (\"find my old sessions\")"},
+		{"@link", "move a session to a ticket, or take it off"},
+		{"@suggest", "suggest tickets for unlinked sessions"},
+		{"@ask", "ask Claude (\"find my old sessions\")"},
 	}},
 	{"Board", [][2]string{
 		{"enter", "on a team: fold it to one line"},
 		{"enter", "on Up for grabs: show unassigned tickets"},
-		{"u", "someone else's tickets"},
-		{"r", "refresh"},
-		{"q", "quit (agents keep running)"},
+		{"@assignee", "someone else's tickets"},
+		{"@refresh", "refresh"},
+		{"@quit", "quit (agents keep running)"},
 	}},
 	{"Panes", nil}, // filled in by panesHelp: it depends on your tmux prefix
-	{"Starting an agent (n)", [][2]string{
+	{"Starting an agent (@start)", [][2]string{
 		{"y  enter", "start"},
 		{"f", "start in another folder"},
 		{"w", "use a new git worktree instead"},
 		{"c", "up-for-grabs ticket: claim it, or not"},
 	}},
-	{"Approving (a)", [][2]string{
+	{"Approving (@approve)", [][2]string{
 		{"y", "allow once"},
 		{"s", "allow for this session"},
 		{"A", "always allow (this repo)"},
@@ -129,20 +132,20 @@ func helpRow(k, d string) string {
 func (m *Model) showHelp() {
 	var lines []string
 	for _, sec := range helpSections {
-		lines = append(lines, m.divider(sec.title))
+		lines = append(lines, m.divider(m.keyed(sec.title)))
 		keys := sec.keys
 		if sec.title == "Panes" {
 			keys = m.panesHelp()
 		}
 		for _, k := range keys {
-			lines = append(lines, helpRow(k[0], k[1]))
+			lines = append(lines, helpRow(m.keyed(k[0]), k[1]))
 		}
 	}
 	lines = append(lines, m.divider("Status"),
 		"  "+workS.Render(m.glyphOf(agent.Working))+" working   "+okSty.Render("✓")+" ready   ○ idle   "+waitS.Render("⚠")+" needs you   · ended", "")
 	closeHelp := func() (tea.Cmd, bool) { return nil, false }
-	m.modal = &modal{title: "Keys", lines: lines, hint: "↑↓ scroll · ? esc close", actions: []action{
-		{"?", "", closeHelp}, {"q", "", closeHelp}, {"enter", "", closeHelp}, // the hint says how
+	m.modal = &modal{title: "Keys", lines: lines, hint: "↑↓ scroll · " + m.k("help") + " esc close · change keys: lanes keys", actions: []action{
+		{m.k("help"), "", closeHelp}, {m.k("quit"), "", closeHelp}, {"enter", "", closeHelp}, // the hint says how
 	}}
 }
 
@@ -171,3 +174,10 @@ func (m *Model) panesHelp() [][2]string {
 func focusItem(label string) string {
 	return strings.Replace(label, " ", "+", 1) + " panes"
 }
+
+// keyed puts the configured keys into help text: "@start" becomes the start key.
+func (m *Model) keyed(text string) string {
+	return keyRef.ReplaceAllStringFunc(text, func(ref string) string { return m.k(ref[1:]) })
+}
+
+var keyRef = regexp.MustCompile(`@[a-z_]+`)

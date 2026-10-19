@@ -49,6 +49,7 @@ type Config struct {
 	Agents      map[string]AgentConfig `toml:"agents"`
 	Teams       map[string]TeamConfig  `toml:"teams"`
 	Coordinator CoordinatorConfig      `toml:"coordinator"`
+	Keys        map[string]string      `toml:"keys"` // board action → key; see KeyActions
 }
 
 // CoordinatorConfig is what a project's coordinator may do without the panel.
@@ -142,6 +143,9 @@ func Load(path string) (Config, error) {
 		if !slices.Contains(strings.Fields(v[1]), v[0]) {
 			return c, fmt.Errorf("%s: %s must be one of %s, got %q", path, key, strings.Join(strings.Fields(v[1]), ", "), v[0])
 		}
+	}
+	if err := CheckKeys(c.Keys); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
 	}
 	for i, r := range c.RepoRoots {
 		c.RepoRoots[i] = Expand(r)

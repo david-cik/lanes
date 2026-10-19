@@ -176,7 +176,7 @@ func (m *Model) openSelected() tea.Cmd {
 		}
 	}
 	if url == "" {
-		m.say("", fmt.Errorf("nothing to open here (o opens a ticket, or the PR of an agent on no ticket)"))
+		m.say("", fmt.Errorf("nothing to open here (%s opens a ticket, or the PR of an agent on no ticket)", m.k("open")))
 		return nil
 	}
 	return m.openURL(url)
@@ -322,7 +322,7 @@ func clean(s string) string {
 func (m *Model) agentDetails(a *agent.Agent) []string {
 	out := []string{bold.Render(m.fit(fmt.Sprintf("%s %s %s · %s %s", glyph(a.Status), a.Tool, a.Name, a.Status, age(m.now().Sub(a.Since)))))}
 	if note := m.waitingNote(a); note != "" {
-		out = append(out, waitS.Render(m.fit("  waiting"+note+"  (a to answer)")))
+		out = append(out, waitS.Render(m.fit("  waiting"+note+"  ("+m.k("approve")+" to answer)")))
 	}
 
 	out = append(out, sect.Render("git"))
@@ -417,7 +417,7 @@ func prLines(pr *gh.PR, m *Model) []string {
 	if len(pr.Failed) > 0 {
 		checks += m.fitAfter(plain, " · failing: "+strings.Join(pr.Failed, ", "))
 	}
-	return []string{m.fit(head) + review, checks, faint.Render(m.fit("  " + pr.URL + "  (o opens)"))}
+	return []string{m.fit(head) + review, checks, faint.Render(m.fit("  " + pr.URL + "  (" + m.k("open") + " opens)"))}
 }
 
 // fitAfter cuts s to the width left after the plain text prefix.
@@ -437,7 +437,7 @@ func (m *Model) ticketDetails(i *tracker.Issue) []string {
 	out := []string{
 		bold.Render(m.fit(i.Key + " " + i.Title)),
 		m.fit("  " + i.Team + " · " + i.State),
-		faint.Render(m.fit("  " + i.URL + "  (o opens)")),
+		faint.Render(m.fit("  " + i.URL + "  (" + m.k("open") + " opens)")),
 	}
 	c, ok := m.issueDetails[i.Key]
 	d := c.detail

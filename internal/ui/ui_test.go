@@ -176,3 +176,28 @@ func rowHas(v string, parts ...string) bool {
 	}
 	return false
 }
+
+func TestRemappedKeys(t *testing.T) {
+	m, _ := controlModel(t)
+	m.opt.Config.Keys = map[string]string{"start": "S", "help": "h"}
+	m.cursorTo(t, "ABC-1 fix it")
+	if v := view(m); !strings.Contains(v, "⟨S⟩ new") || !strings.Contains(v, "⟨h⟩ keys") {
+		t.Fatalf("footer:\n%s", v)
+	}
+	m.Update(key("n")) // no longer anything
+	if m.modal != nil {
+		t.Fatalf("n still starts: %+v", m.modal)
+	}
+	m.Update(key("h"))
+	if m.modal == nil || m.modal.title != "Keys" || !strings.Contains(strings.Join(m.modal.lines, "\n"), "S ") {
+		t.Fatalf("help: %+v", m.modal)
+	}
+	m.Update(key("h")) // closes it too
+	if m.modal != nil {
+		t.Fatal("help didn't close")
+	}
+	_, cmd := m.Update(key("S"))
+	if cmd == nil && m.modal == nil {
+		t.Fatal("S didn't start")
+	}
+}

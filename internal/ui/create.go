@@ -325,7 +325,7 @@ func (m *Model) created(msg createdMsg) tea.Cmd {
 	}
 	m.follow = msg.key
 	if msg.session == "" {
-		m.say("created "+msg.key+" — n starts an agent on it", nil)
+		m.say("created "+msg.key+" — "+m.k("start")+" starts an agent on it", nil)
 		return m.fetchIssues()
 	}
 	err := sessions.Link(context.Background(), m.opt.Store, msg.session, msg.key)

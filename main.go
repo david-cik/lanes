@@ -68,6 +68,7 @@ func run() error {
 		fmt.Fprint(flag.CommandLine.Output(), `usage:
   lanes [--assignee who] [--no-tmux]     the board (starts or attaches to tmux session "lanes")
   lanes auth logout                      forget the Linear sign-in
+  lanes keys [--reset]                   choose the board's keys, one question each (--reset: back to the defaults)
   lanes install-hooks [--yes] [--settings PATH]
                                          report every Claude session to lanes (edits ~/.claude/settings.json after asking)
   lanes uninstall-hooks [--yes] [--settings PATH]
@@ -99,6 +100,9 @@ flags:
 	}
 	if len(os.Args) > 1 && (os.Args[1] == "sessions" || os.Args[1] == "link" || os.Args[1] == "unlink") {
 		return sessionsCommand(os.Args[1], os.Args[2:])
+	}
+	if len(os.Args) > 1 && os.Args[1] == "keys" {
+		return keysCommand(os.Args[2:])
 	}
 	if len(os.Args) == 2 && os.Args[1] == "mcp" {
 		version := "devel"

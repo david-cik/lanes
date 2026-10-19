@@ -466,7 +466,7 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	switch k.String() {
-	case "q", "ctrl+c":
+	case "ctrl+c":
 		m.unshow() // best effort on the way out; Reconcile repairs the rest next start
 		return tea.Quit
 	case "j", "down":
@@ -485,58 +485,81 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		return m.jumpTeam(k.String() == "]")
 	case "l", "right":
 		return m.focusAgent()
-	case "/":
-		m.typing = true
 	case "esc":
 		if m.filter != "" {
 			m.setFilter("")
 		}
-	case "d":
+	case "enter":
+		return m.focusSelected()
+	}
+	return m.do(m.actionOf(k.String()))
+}
+
+// k is the key for a board action (config [keys], else its default).
+func (m *Model) k(action string) string { return m.opt.Config.Key(action) }
+
+// actionOf is the board action on key, or "".
+func (m *Model) actionOf(key string) string {
+	for _, a := range config.KeyActions {
+		if m.k(a.Name) == key {
+			return a.Name
+		}
+	}
+	return ""
+}
+
+// do runs a board action (see config.KeyActions).
+func (m *Model) do(action string) tea.Cmd {
+	switch action {
+	case "quit":
+		m.unshow() // best effort on the way out; Reconcile repairs the rest next start
+		return tea.Quit
+	case "filter":
+		m.typing = true
+	case "details":
 		m.details = !m.details
 		if m.details {
 			return m.fetchDetails(false)
 		}
-	case "o":
+	case "open":
 		return m.openSelected()
-	case "p":
+	case "prs":
 		return m.pullRequests()
-	case "i":
+	case "info":
 		return m.ticketCard()
-	case "N":
+	case "new_ticket":
 		return m.newTicket()
-	case "r":
+	case "refresh":
 		cmds := []tea.Cmd{m.fetchIssues(), m.fetchAgents()}
 		if m.details {
 			cmds = append(cmds, m.fetchDetails(true))
 		}
 		return tea.Batch(cmds...)
-	case "u":
+	case "assignee":
 		m.modal = &modal{id: "assignee", title: "Show tickets assigned to", items: m.assigneeChoices(),
 			onChoose: m.chooseAssignee}
 		if m.users == nil {
 			return m.fetchUsers()
 		}
-	case "enter":
-		return m.focusSelected()
-	case "n":
+	case "start":
 		return m.newAgent()
-	case "s":
+	case "send":
 		return m.sendSelected()
-	case "x":
+	case "stop":
 		return m.stopSelected()
-	case "t":
+	case "link":
 		return m.linkSelected()
-	case "a":
+	case "approve":
 		return m.approve()
-	case "?":
+	case "help":
 		m.showHelp()
-	case "A":
+	case "adopt":
 		return m.adoptSelected()
-	case "C":
+	case "coordinator":
 		return m.startCoordinator()
-	case "T":
+	case "suggest":
 		return m.suggestLinks()
-	case ":":
+	case "ask":
 		return m.ask()
 	}
 	return nil
@@ -594,7 +617,7 @@ func (m *Model) View() tea.View {
 		if boardH > 0 {
 			m.viewBoard(&b, boardH)
 		}
-		b.WriteString(line(m.width, s("▍", accentS), s(" details", bold), s("   d hides · o opens · r refreshes", faint)) + "\n")
+		b.WriteString(line(m.width, s("▍", accentS), s(" details", bold), s("   "+m.k("details")+" hides · "+m.k("open")+" opens · "+m.k("refresh")+" refreshes", faint)) + "\n")
 		m.viewDetails(&b, body-boardH-1)
 	default:
 		m.viewBoard(&b, body)
@@ -614,7 +637,7 @@ func (m *Model) View() tea.View {
 	case m.modal != nil:
 		b.WriteString(faint.Render(trunc(m.modal.help(), m.width)))
 	case m.typing:
-		b.WriteString(line(m.width, s("/", keyS), s(m.filter+"▏", plainS), s("   enter keep · esc clear · ↑↓ move", faint)))
+		b.WriteString(line(m.width, s(m.k("filter"), keyS), s(m.filter+"▏", plainS), s("   enter keep · esc clear · ↑↓ move", faint)))
 	default:
 		b.WriteString(m.footerLine(m.footerItems()))
 	}

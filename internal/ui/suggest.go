@@ -141,7 +141,7 @@ func (m *Model) reviewKey(k tea.KeyPressMsg) tea.Cmd {
 		}
 		m.review = nil
 		m.rebuild()
-		m.say(fmt.Sprintf("linked %d sessions (t on a session changes or removes its link)", n), err)
+		m.say(fmt.Sprintf("linked %d sessions (%s on a session changes or removes its link)", n, m.k("link")), err)
 		return m.detailsMoved()
 	}
 	return nil
@@ -251,7 +251,7 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 		return
 	}
 	m.rebuild()
-	m.say(fmt.Sprintf("auto-linked %s → %s (t changes it)", msg.name, msg.res[0].Key), err)
+	m.say(fmt.Sprintf("auto-linked %s → %s (%s changes it)", msg.name, msg.res[0].Key, m.k("link")), err)
 }
 
 // endedSessions turns links to Claude sessions that are no longer running into board

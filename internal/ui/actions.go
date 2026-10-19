@@ -74,7 +74,7 @@ func (m *Model) controllable() (*agent.Agent, bool) {
 	case !ok:
 		m.say("", fmt.Errorf("select an agent"))
 	case a.RecordID == "":
-		m.say("", fmt.Errorf("%s was not started by lanes, so lanes can't control it (A adopts it, t puts it on a ticket)", a.Name))
+		m.say("", fmt.Errorf("%s was not started by lanes, so lanes can't control it (%s adopts it, %s puts it on a ticket)", a.Name, m.k("adopt"), m.k("link")))
 	case m.stopping[a.RecordID]:
 		m.say("", fmt.Errorf("%s is stopping", a.Name))
 	case m.opt.Tmux == nil:

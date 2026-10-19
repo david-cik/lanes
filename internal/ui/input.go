@@ -208,6 +208,9 @@ func (m *Model) footerClick(x int) tea.Cmd {
 		k, label, _ := strings.Cut(it, " ")
 		w := lipgloss.Width(k) + 2 + 1 + lipgloss.Width(label) // ⟨k⟩ label
 		if x >= at && x < at+w {
+			if a := m.actionOf(k); a != "" {
+				return m.do(a)
+			}
 			if strings.Contains(k, "+") { // the tmux pane keys: clicking means "go to the agent"
 				return m.focusAgent()
 			}

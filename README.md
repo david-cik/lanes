@@ -78,6 +78,12 @@ Status: a spinner while working, `✓` ready (finished a turn you haven't looked
 
 ## Keys
 
+These are the defaults. To choose your own, run `lanes keys`: it asks about each action in
+turn ("Key to start an agent on a ticket?"); press the key you want, `enter` to keep the
+current one, or `backspace` for its default, and save at the end. `lanes keys --reset` puts
+them all back. Moving around (`j k g G [ ] l`, arrows, `enter`, `esc`) stays as it is. The
+footer and `?` always show your keys; restart lanes to pick up changes.
+
 | Key | Does |
 |---|---|
 | `↑` `↓` (or `j` `k`) | move — the right pane shows the selected agent (or the selected ticket's agent) as you go |
@@ -330,6 +336,9 @@ preamble = ""                 # standing instructions, e.g. "Run the tests befor
 
 [agents.claude]
 args = []                     # extra arguments, e.g. ["--model", "sonnet"]
+
+[keys]                        # board keys you changed (lanes keys writes this; --reset removes it)
+start = "n"                   # one character each; names as in `lanes keys`, e.g. send, stop, approve, quit
 
 [coordinator]                 # what a project's coordinator (C) may do; see "A project's coordinator"
 start = "ask"                 # "ask" (in its pane), "auto", or "panel"
