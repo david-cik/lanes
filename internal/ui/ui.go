@@ -223,7 +223,7 @@ func (m *Model) fetchAgents() tea.Cmd {
 	f := m.opt.Fleet
 	m.agentSeq++
 	seq := m.agentSeq
-	store := m.opt.Store
+	store, ads := m.opt.Store, m.opt.Adapters
 	fallback := maps.Clone(m.links)
 	endedFor := time.Duration(m.opt.Config.EndedDays) * 24 * time.Hour
 	return func() tea.Msg {
@@ -234,9 +234,9 @@ func (m *Model) fetchAgents() tea.Cmd {
 			links = fallback
 		}
 		a, live, err := f.Snapshot(ctx)
-		a = dropToolSessions(a)
+		a = dropToolSessions(ads, a)
 		if err == nil || len(a) > 0 {
-			a = append(a, endedSessions(links, a, endedFor)...)
+			a = append(a, endedSessions(ads, links, a, endedFor)...)
 		}
 		return agentsMsg{seq: seq, agents: a, live: live, err: err, links: links}
 	}

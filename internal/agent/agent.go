@@ -72,6 +72,37 @@ type Coordinates interface {
 	CoordinatorArgs(srv MCPServer, allowed []string) []string
 }
 
+// Transcripts is implemented by adapters whose tool keeps a transcript of each session
+// that lanes can read: to find sessions, suggest tickets for them, and read replies.
+type Transcripts interface {
+	// TranscriptPath finds session id's transcript (cwd, where it ran, helps if known);
+	// "" if there's none.
+	TranscriptPath(cwd, id string) string
+	// Transcripts lists the transcripts changed since then (zero: all), by session id.
+	Transcripts(since time.Time) map[string]string
+	SessionInfo(path string) (Info, error)
+	// Messages reads the conversation from (about) the last tail bytes of the transcript.
+	Messages(path string, tail int64) []Msg
+}
+
+// Info is what a transcript says about its session.
+type Info struct {
+	Cwd        string
+	Entrypoint string // how it was started, in the tool's words; "" = not known (yet)
+	Background bool   // started by a tool or plugin, not a person: not ticket work
+	First      string // the first message the user typed (usually what it's for)
+	Title      string
+	When       time.Time // last activity
+}
+
+// Msg is one piece of a conversation, as lanes reads any tool's transcript.
+type Msg struct {
+	User  bool   // the user's side (else the assistant's)
+	Typed bool   // typed by a person: the user's side, and not text the tool put there
+	Text  string // what it says ("" for a tool call)
+	Tool  string // the input of a tool the assistant called
+}
+
 // Waiter is implemented by adapters without hooks whose tool shows known text when it
 // needs the user; lanes then reads their status from their pane.
 type Waiter interface {

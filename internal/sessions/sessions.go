@@ -1,12 +1,10 @@
-// Package sessions finds Claude sessions — running or recent — and links them to
+// Package sessions finds agent sessions — running or recent — and links them to
 // tickets. It backs `lanes sessions` / `lanes link` and the panel's "ask Claude".
 package sessions
 
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,6 +17,7 @@ import (
 
 type Session struct {
 	ID       string    `json:"id"`
+	Tool     string    `json:"tool"`
 	Title    string    `json:"title"`
 	Cwd      string    `json:"cwd"`
 	When     time.Time `json:"last_activity"`
@@ -29,80 +28,68 @@ type Session struct {
 	Prompts  []string  `json:"recent_prompts,omitempty"`
 }
 
-func configDir() string {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
-		return d
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".claude")
-}
-
 // List returns running sessions plus those whose transcript changed in the last days,
-// newest first. running comes from the Claude adapter (may be nil).
-func List(running []agent.Agent, days int, store state.Store) []Session {
+// newest first, of every tool in ads whose transcripts lanes can read. running comes
+// from the adapters (may be nil).
+func List(ads []agent.Adapter, running []agent.Agent, days int, store state.Store) []Session {
 	links, _ := store.Links()
 	recs, _ := store.All()
-	recTicket := map[string]string{}
-	prefixes := map[string]bool{} // team keys this user links to, e.g. SRE
+	recTicket := map[string]string{} // by tool:session
+	prefixes := map[string]bool{}    // team keys this user links to, e.g. SRE
 	for _, r := range recs {
-		recTicket[r.SessionID] = r.TicketKey
+		recTicket[state.LinkKey(r.Tool, r.SessionID)] = r.TicketKey
 		addPrefix(prefixes, r.TicketKey)
 	}
 	for _, t := range links {
 		addPrefix(prefixes, t)
 	}
-	alive := map[string]bool{}
+	ticketOf := func(k string) string {
+		if t, ok := recTicket[k]; ok {
+			return t
+		}
+		return links[k]
+	}
+	alive := map[string]agent.Agent{} // by tool:session
 	for _, a := range running {
-		alive[a.ID] = true
+		alive[state.LinkKey(a.Tool, a.ID)] = a
 	}
 	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
-	paths, _ := filepath.Glob(filepath.Join(configDir(), "projects", "*", "*.jsonl"))
 	seen := map[string]bool{}
 	var out []Session
-	add := func(id, path string) {
-		if seen[id] {
-			return
+	for _, ad := range ads {
+		tr, ok := ad.(agent.Transcripts)
+		if !ok {
+			continue
 		}
-		seen[id] = true // also for skipped ones, so the running list below doesn't add them back
-		in, err := suggest.SessionInfo(path)
-		if err != nil || (!alive[id] && in.When.Before(cutoff)) {
-			return
+		paths := tr.Transcripts(cutoff)
+		for _, a := range alive { // running ones, however long ago they last wrote
+			if a.Tool == ad.Name() {
+				if p := tr.TranscriptPath(a.Cwd, a.ID); p != "" {
+					paths[a.ID] = p
+				}
+			}
 		}
-		// Sessions started by tools and plugins (Agent SDK, `claude -p`) aren't work a
-		// person would put on a ticket.
-		if strings.HasPrefix(in.Entrypoint, "sdk") {
-			return
-		}
-		s := Session{ID: id, Title: in.Title, Cwd: in.Cwd, When: in.When, Running: alive[id], First: in.First}
-		if t, ok := recTicket[id]; ok {
-			s.Ticket = t
-		} else {
-			s.Ticket = links[state.LinkKey("claude", id)]
-		}
-		if r, err := suggest.FileKeys(path, prefixes); err == nil {
+		for id, path := range paths {
+			k := state.LinkKey(ad.Name(), id)
+			seen[k] = true // also for skipped ones, so the running list below doesn't add them back
+			in, err := tr.SessionInfo(path)
+			_, running := alive[k]
+			if err != nil || (!running && in.When.Before(cutoff)) || in.Background {
+				continue // a session a tool or plugin started isn't work to put on a ticket
+			}
+			s := Session{ID: id, Tool: ad.Name(), Title: in.Title, Cwd: in.Cwd, When: in.When, Running: running,
+				First: in.First, Ticket: ticketOf(k)}
+			r := suggest.FileKeys(tr, path, prefixes)
 			for _, c := range r[:min(3, len(r))] {
 				s.Mentions = append(s.Mentions, fmt.Sprintf("%s ×%d", c.Key, c.Mentions))
 			}
-		}
-		s.Prompts = suggest.Prompts(path, 3)
-		out = append(out, s)
-	}
-	for _, p := range paths {
-		id := strings.TrimSuffix(filepath.Base(p), ".jsonl")
-		if fi, err := os.Stat(p); err == nil && (alive[id] || fi.ModTime().After(cutoff)) {
-			add(id, p)
-		}
-	}
-	for _, a := range running { // running but no transcript yet, e.g. a fork that hasn't taken a turn
-		if !seen[a.ID] {
-			seen[a.ID] = true
-			s := Session{ID: a.ID, Title: a.Name, Cwd: a.Cwd, When: a.Since, Running: true}
-			if t, ok := recTicket[a.ID]; ok {
-				s.Ticket = t
-			} else {
-				s.Ticket = links[state.LinkKey("claude", a.ID)]
-			}
+			s.Prompts = suggest.Prompts(tr, path, 3)
 			out = append(out, s)
+		}
+	}
+	for k, a := range alive { // running but no transcript yet, e.g. a fork that hasn't taken a turn
+		if !seen[k] {
+			out = append(out, Session{ID: a.ID, Tool: a.Tool, Title: a.Name, Cwd: a.Cwd, When: a.Since, Running: true, Ticket: ticketOf(k)})
 		}
 	}
 	slices.SortFunc(out, func(a, b Session) int { return b.When.Compare(a.When) })
@@ -127,23 +114,31 @@ func Match(all []Session, query string) []Session {
 	return out
 }
 
-// Lookup finds one session by id or id prefix: its transcript, found without scanning
-// every session, or a running session that has none yet.
-func Lookup(ref string, running []agent.Agent) (Session, error) {
+// Lookup finds one session by id or id prefix among the transcripts of every tool in
+// ads, or a running session that has none yet.
+func Lookup(ads []agent.Adapter, ref string, running []agent.Agent) (Session, error) {
 	if len(ref) < 4 || strings.ContainsAny(ref, "/*?[") {
 		return Session{}, fmt.Errorf("session id %q is too short or not an id (use at least 4 characters)", ref)
 	}
-	paths, _ := filepath.Glob(filepath.Join(configDir(), "projects", "*", ref+"*.jsonl"))
-	found := map[string]Session{}
+	found := map[string]Session{} // by tool:session
 	for _, a := range running {
 		if strings.HasPrefix(a.ID, ref) {
-			found[a.ID] = Session{ID: a.ID, Title: a.Name, Cwd: a.Cwd, When: a.Since, Running: true}
+			found[state.LinkKey(a.Tool, a.ID)] = Session{ID: a.ID, Tool: a.Tool, Title: a.Name, Cwd: a.Cwd, When: a.Since, Running: true}
 		}
 	}
-	for _, p := range paths {
-		id := strings.TrimSuffix(filepath.Base(p), ".jsonl")
-		in, _ := suggest.SessionInfo(p)
-		found[id] = Session{ID: id, Title: in.Title, Cwd: in.Cwd, When: in.When, Running: found[id].Running}
+	for _, ad := range ads {
+		tr, ok := ad.(agent.Transcripts)
+		if !ok {
+			continue
+		}
+		for id, p := range tr.Transcripts(time.Time{}) {
+			if !strings.HasPrefix(id, ref) {
+				continue
+			}
+			k := state.LinkKey(ad.Name(), id)
+			in, _ := tr.SessionInfo(p)
+			found[k] = Session{ID: id, Tool: ad.Name(), Title: in.Title, Cwd: in.Cwd, When: in.When, Running: found[k].Running}
+		}
 	}
 	switch len(found) {
 	case 0:
@@ -186,18 +181,18 @@ func addPrefix(set map[string]bool, ticket string) {
 
 // Link puts a session on ticket (or, with ticket == state.NoTicket, removes it from
 // any). A session lanes launched has its launch record changed instead of a link.
-func Link(ctx context.Context, store state.Store, sessionID, ticket string) error {
+func Link(ctx context.Context, store state.Store, tool, sessionID, ticket string) error {
 	ticket = strings.ToUpper(strings.TrimSpace(ticket))
 	if ticket != state.NoTicket && !keyRe.MatchString(ticket) {
 		return fmt.Errorf("%q doesn't look like a ticket key (e.g. ABC-123)", ticket)
 	}
 	recs, _ := store.All()
 	for _, r := range recs {
-		if r.SessionID == sessionID {
+		if r.Tool == tool && r.SessionID == sessionID {
 			_, err := store.SetRecordTicket(r.ID, ticket)
 			return err
 		}
 	}
-	_, err := store.SetLink(state.LinkKey("claude", sessionID), ticket)
+	_, err := store.SetLink(state.LinkKey(tool, sessionID), ticket)
 	return err
 }

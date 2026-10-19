@@ -164,7 +164,7 @@ func TestEndedLinkedSessionsShowAndResume(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
 	endedTranscript(t, cfg, "dead1", t.TempDir(), "Fix the login redirect")
 	endedTranscript(t, cfg, "plugin", t.TempDir(), "", "sdk-cli")
-	ended := endedSessions(map[string]string{"claude:dead1": "ABC-1", "claude:alive": "ABC-1", "claude:nolog": "ABC-1", "claude:off": "", "claude:plugin": "ABC-1"},
+	ended := endedSessions([]agent.Adapter{stopper{}}, map[string]string{"claude:dead1": "ABC-1", "claude:alive": "ABC-1", "claude:nolog": "ABC-1", "claude:off": "", "claude:plugin": "ABC-1"},
 		[]agent.Agent{{ID: "alive", Tool: "claude"}}, 3*24*time.Hour)
 	if len(ended) != 1 || ended[0].Name != "Fix the login redirect" || !ended[0].Ended || ended[0].TicketKey != "ABC-1" {
 		t.Fatalf("ended %+v", ended)
@@ -254,7 +254,7 @@ func TestToolSessionsAreDropped(t *testing.T) {
 	dir := filepath.Join(cfg, "projects", "-obs")
 	os.MkdirAll(dir, 0o700)
 	os.WriteFile(filepath.Join(dir, "obs1.jsonl"), []byte(`{"type":"user","cwd":"/obs","entrypoint":"sdk-cli","message":{"content":"x"}}`+"\n"), 0o600)
-	got := dropToolSessions([]agent.Agent{
+	got := dropToolSessions([]agent.Adapter{stopper{}}, []agent.Agent{
 		{ID: "obs1", Tool: "claude", Cwd: "/obs", External: true},
 		{ID: "mine", Tool: "claude", Cwd: "/src", External: true}, // no transcript yet: kept
 		{ID: "r", Tool: "claude", RecordID: "r1"},                 // lanes' own: kept

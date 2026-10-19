@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -183,14 +182,18 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 			ctlError(ev, err)
 			return nil
 		}
-		dir := os.Getenv("CLAUDE_CONFIG_DIR")
+		tr := m.transcripts(a.Tool)
+		if tr == nil {
+			ctlError(ev, fmt.Errorf("lanes can't read %s's transcripts, so not what %s wrote", a.Tool, a.Name))
+			return nil
+		}
 		return func() tea.Msg {
-			p := suggest.TranscriptPath(dir, a.Cwd, a.session)
+			p := tr.TranscriptPath(a.Cwd, a.session)
 			if p == "" {
 				ctlError(ev, fmt.Errorf("%s has no transcript yet", a.Name))
 				return nil
 			}
-			ctlReply(ev, map[string]any{"agent": a.ID, "ticket": a.Ticket, "status": a.Status, "reply": suggest.LastReply(p)})
+			ctlReply(ev, map[string]any{"agent": a.ID, "ticket": a.Ticket, "status": a.Status, "reply": suggest.LastReply(tr, p)})
 			return nil
 		}
 	case "wait":

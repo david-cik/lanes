@@ -6,9 +6,21 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/david-cik/lanes/internal/agent/claude"
 )
 
 var open = map[string]bool{"ABC-1": true, "ABC-2": true, "XYZ-9": true}
+
+// The fixtures are Claude transcripts, read through Claude's adapter.
+var cl = claude.New()
+
+// score ranks what a transcript (given as its text) mentions.
+func score(t *testing.T, transcript string, open map[string]bool) Result {
+	p := filepath.Join(t.TempDir(), "s.jsonl")
+	os.WriteFile(p, []byte(transcript), 0o600)
+	return File(cl, p, open)
+}
 
 func line(typ, content string) string {
 	return fmt.Sprintf(`{"type":%q,"message":{"content":%s}}`, typ, content)
@@ -23,7 +35,7 @@ func TestScoreWeightsAndFilters(t *testing.T) {
 		`not json`,
 		line("system", `"ABC-2"`),
 	}, "\n")
-	r := Score(strings.NewReader(transcript), open)
+	r := score(t, transcript, open)
 	if len(r) != 2 || r[0].Key != "ABC-1" || r[0].Mentions != 4 || r[0].Typed != 2 || r[1].Key != "ABC-2" || r[1].Mentions != 2 || r[1].Typed != 1 {
 		t.Fatalf("%+v", r)
 	}
@@ -50,7 +62,7 @@ func TestConfident(t *testing.T) {
 
 func TestRecencyBreaksTies(t *testing.T) {
 	transcript := line("user", `"ABC-1"`) + "\n" + line("user", `"ABC-2"`)
-	if r := Score(strings.NewReader(transcript), open); r[0].Key != "ABC-2" {
+	if r := score(t, transcript, open); r[0].Key != "ABC-2" {
 		t.Fatalf("later mention should win: %+v", r)
 	}
 }
@@ -64,32 +76,9 @@ func TestFileReadsOnlyTheTail(t *testing.T) {
 	}
 	b.WriteString(line("user", `"ABC-1"`) + "\n")
 	os.WriteFile(p, []byte(b.String()), 0o600)
-	r, err := File(p, open)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := File(cl, p, open)
 	if r[0].Key != "XYZ-9" || r[len(r)-1].Key != "ABC-1" || r[0].Mentions >= strings.Count(b.String(), "XYZ-9") {
 		t.Fatalf("tail not applied: %+v", r)
-	}
-}
-
-func TestTranscriptPath(t *testing.T) {
-	dir := t.TempDir()
-	cwd := "/Users/me/src/my.app"
-	want := filepath.Join(dir, "projects", "-Users-me-src-my-app", "s1.jsonl")
-	os.MkdirAll(filepath.Dir(want), 0o700)
-	os.WriteFile(want, nil, 0o600)
-	if got := TranscriptPath(dir, cwd, "s1"); got != want {
-		t.Fatalf("got %q", got)
-	}
-	other := filepath.Join(dir, "projects", "elsewhere", "s2.jsonl")
-	os.MkdirAll(filepath.Dir(other), 0o700)
-	os.WriteFile(other, nil, 0o600)
-	if got := TranscriptPath(dir, cwd, "s2"); got != other {
-		t.Fatalf("fallback got %q", got)
-	}
-	if got := TranscriptPath(dir, cwd, "nope"); got != "" {
-		t.Fatalf("missing got %q", got)
 	}
 }
 
@@ -100,7 +89,7 @@ func TestInjectedTextIsNotTyped(t *testing.T) {
 		line("user", `[{"type":"text","text":"<system-reminder>ABC-1</system-reminder>"}]`),
 		line("user", `"please do ABC-2"`),
 	}, "\n")
-	r := Score(strings.NewReader(transcript), open)
+	r := score(t, transcript, open)
 	var a1, a2 Candidate
 	for _, c := range r {
 		switch c.Key {
@@ -118,25 +107,6 @@ func TestInjectedTextIsNotTyped(t *testing.T) {
 	}
 }
 
-func TestSessionInfo(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "s.jsonl")
-	os.WriteFile(p, []byte(strings.Join([]string{
-		`{"type":"mode","mode":"x"}`,
-		`{"type":"user","cwd":"/src/app","message":{"content":"hi"}}`,
-		`{"type":"ai-title","aiTitle":"Early title"}`,
-		`{"type":"ai-title","aiTitle":"Fix login redirect"}`,
-		`garbage`,
-	}, "\n")), 0o600)
-	in, err := SessionInfo(p)
-	if err != nil || in.Cwd != "/src/app" || in.Title != "Fix login redirect" || in.When.IsZero() || in.First != "hi" {
-		t.Fatalf("%+v %v", in, err)
-	}
-	os.WriteFile(p, []byte(`{"cwd":"/x"}`+"\n"+`{"type":"ai-title","aiTitle":"ai"}`+"\n"+`{"type":"custom-title","customTitle":"mine"}`+"\n"), 0o600)
-	if in, _ := SessionInfo(p); in.Title != "mine" {
-		t.Fatalf("custom title should win: %+v", in)
-	}
-}
-
 func TestPromptsAndAnyKey(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "s.jsonl")
 	os.WriteFile(p, []byte(strings.Join([]string{
@@ -147,10 +117,10 @@ func TestPromptsAndAnyKey(t *testing.T) {
 		line("assistant", `"assistant text"`),
 		line("user", `"third"`),
 	}, "\n")), 0o600)
-	if got := Prompts(p, 2); len(got) != 2 || got[0] != "second ask" || got[1] != "third" {
+	if got := Prompts(cl, p, 2); len(got) != 2 || got[0] != "second ask" || got[1] != "third" {
 		t.Fatalf("%q", got)
 	}
-	r, _ := File(p, nil)
+	r := File(cl, p, nil)
 	if len(r) != 1 || r[0].Key != "ZZZ-5" {
 		t.Fatalf("any-key scoring: %+v", r)
 	}
@@ -167,7 +137,7 @@ func TestLastReply(t *testing.T) {
 		`{"type":"user","isMeta":true,"message":{"content":"injected"}}`,
 		line("assistant", `[{"type":"text","text":"done: it works"}]`),
 	}, "\n")), 0o600)
-	if got := LastReply(p); got != "looking\n\ndone: it works" {
+	if got := LastReply(cl, p); got != "looking\n\ndone: it works" {
 		t.Fatalf("%q", got)
 	}
 }

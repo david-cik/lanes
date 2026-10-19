@@ -24,6 +24,7 @@ type createdMsg struct {
 	key     string
 	err     error
 	session string // a session to put on the new ticket ("" = none)
+	tool    string // its tool
 	name    string // its name, for the message
 }
 
@@ -37,7 +38,7 @@ func (m *Model) newTicket() tea.Cmd {
 		return nil
 	}
 	var from *agent.Agent // the session to draft from, if the cursor is on one
-	if r, ok := m.selected(); ok && r.Kind == board.AgentRow && r.Agent.Tool == "claude" {
+	if r, ok := m.selected(); ok && r.Kind == board.AgentRow && m.transcripts(r.Agent.Tool) != nil {
 		from = r.Agent
 	}
 	team, project := m.selectedTeam()
@@ -63,7 +64,7 @@ func (m *Model) newTicket() tea.Cmd {
 func (m *Model) startDraft(cr tracker.Creator, team, project string, from *agent.Agent) tea.Cmd {
 	t := ticketDraft{cr: cr, team: team, project: project, from: from}
 	if from != nil {
-		t.session, t.name = from.ID, from.Name
+		t.session, t.tool, t.name = from.ID, from.Tool, from.Name
 		m.say(m.askName()+" is drafting a ticket from "+from.Name+"…", nil)
 		return m.draft(t)
 	}
@@ -89,7 +90,7 @@ type ticketDraft struct {
 	cr                   tracker.Creator
 	team, project        string
 	title, description   string
-	session, name        string // drafted from this session, which goes on the ticket
+	session, tool, name  string // drafted from this session, which goes on the ticket
 	words                string // what you typed, when not drafted from a session
 	from                 *agent.Agent
 	anyway               bool   // you chose to create it although Claude saw a duplicate
@@ -119,16 +120,19 @@ func (m *Model) draft(t ticketDraft) tea.Cmd {
 		in["request"] = words
 	}
 	var path, cwd string
+	var tr agent.Transcripts
 	if from != nil {
-		cwd = from.Cwd
-		path = suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), cwd, from.ID)
+		cwd, tr = from.Cwd, m.transcripts(from.Tool)
+	}
+	if tr != nil {
+		path = tr.TranscriptPath(cwd, from.ID)
 	}
 	run := m.readers.Ask
 	return func() tea.Msg {
 		if path != "" {
-			info, _ := suggest.SessionInfo(path)
+			info, _ := tr.SessionInfo(path)
 			in["session"] = map[string]any{"title": info.Title, "folder": cwd,
-				"first_prompt": info.First, "recent_prompts": suggest.Prompts(path, 8)}
+				"first_prompt": info.First, "recent_prompts": suggest.Prompts(tr, path, 8)}
 		}
 		data, _ := json.Marshal(in)
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -164,7 +168,7 @@ func (m *Model) gotDraft(t ticketDraft) tea.Cmd {
 		}}}
 		if t.session != "" {
 			acts = append([]action{{"l", "put " + t.name + " on " + t.duplicate + " instead", func() (tea.Cmd, bool) {
-				err := sessions.Link(context.Background(), m.opt.Store, t.session, t.duplicate)
+				err := sessions.Link(context.Background(), m.opt.Store, t.tool, t.session, t.duplicate)
 				m.links, _ = m.opt.Store.Links()
 				m.rebuild()
 				m.say("put "+t.name+" on "+t.duplicate, err)
@@ -203,7 +207,7 @@ func (m *Model) reviewDraft(t ticketDraft) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			key, err := t.cr.Create(ctx, t.team, t.title, t.description, t.project)
-			return createdMsg{key: key, err: err, session: t.session, name: t.name}
+			return createdMsg{key: key, err: err, session: t.session, tool: t.tool, name: t.name}
 		}, false
 	}
 	m.modal = &modal{title: "New ticket", lines: lines, hint: "↑↓ scroll · esc drop it", actions: []action{
@@ -328,7 +332,7 @@ func (m *Model) created(msg createdMsg) tea.Cmd {
 		m.say("created "+msg.key+" — "+m.k("start")+" starts an agent on it", nil)
 		return m.fetchIssues()
 	}
-	err := sessions.Link(context.Background(), m.opt.Store, msg.session, msg.key)
+	err := sessions.Link(context.Background(), m.opt.Store, msg.tool, msg.session, msg.key)
 	m.links, _ = m.opt.Store.Links()
 	m.say("created "+msg.key+" and put "+msg.name+" on it", err)
 	return tea.Batch(m.fetchIssues(), m.fetchAgents())

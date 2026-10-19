@@ -44,6 +44,7 @@ type askMsg struct {
 	err              error
 	known            map[string]string // session ids Claude was shown → title
 	current          map[string]string // … → the ticket each is on now
+	tool             map[string]string // … → its tool
 	request          string            // what was asked, to carry on after a question
 	convo            []askTurn
 	selected         *askTicket // the ticket under the cursor when you asked
@@ -92,9 +93,9 @@ func (m *Model) askClaude(request string, convo []askTurn, sel *askTicket) tea.C
 			adopted[r.AdoptedFrom] = true
 		}
 	}
-	store, run := m.opt.Store, m.readers.Ask
+	store, run, ads := m.opt.Store, m.readers.Ask, m.opt.Adapters
 	return func() tea.Msg {
-		list := slices.DeleteFunc(sessions.List(running, 30, store), func(s sessions.Session) bool { return adopted[s.ID] })
+		list := slices.DeleteFunc(sessions.List(ads, running, 30, store), func(s sessions.Session) bool { return adopted[s.ID] })
 		if sel != nil { // sessions about the selected ticket first, so they survive the cut
 			slices.SortStableFunc(list, func(a, b sessions.Session) int {
 				return cmpBool(about(b, sel.Key), about(a, sel.Key))
@@ -111,9 +112,9 @@ func (m *Model) askClaude(request string, convo []askTurn, sel *askTicket) tea.C
 		}
 		r := parseAsk(out)
 		r.request, r.convo, r.selected = request, convo, sel
-		r.known, r.current = map[string]string{}, map[string]string{}
+		r.known, r.current, r.tool = map[string]string{}, map[string]string{}, map[string]string{}
 		for _, s := range list {
-			r.known[s.ID], r.current[s.ID] = s.Title, s.Ticket
+			r.known[s.ID], r.current[s.ID], r.tool[s.ID] = s.Title, s.Ticket, s.Tool
 		}
 		return r
 	}
@@ -187,7 +188,7 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 		return nil
 	}
 	// The answer is untrusted: only sessions we showed it, and well-formed tickets.
-	type change struct{ id, name, ticket, reason string }
+	type change struct{ id, tool, name, ticket, reason string }
 	var todo []change
 	var skipped []string
 	already := 0
@@ -209,7 +210,7 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 				name = a.Name
 			}
 		}
-		todo = append(todo, change{l.Session, name, l.Ticket, l.Reason})
+		todo = append(todo, change{l.Session, msg.tool[l.Session], name, l.Ticket, l.Reason})
 	}
 	switch {
 	case len(todo) == 0 && already > 0:
@@ -250,7 +251,7 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 		onYes: func() tea.Cmd {
 			var errs []error
 			for _, c := range todo {
-				errs = append(errs, sessions.Link(context.Background(), store, c.id, c.ticket))
+				errs = append(errs, sessions.Link(context.Background(), store, c.tool, c.id, c.ticket))
 			}
 			m.links, _ = store.Links()
 			m.rebuild()

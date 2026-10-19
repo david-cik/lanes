@@ -348,10 +348,22 @@ func sessionsCommand(cmd string, args []string) error {
 	store := state.Store{Dir: stateDir}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	cfg, err := config.Load(config.Path())
+	if err != nil {
+		cfg = config.Default() // the tools are all this needs; a broken config shouldn't stop it
+	}
+	ads := installedAdapters(cfg)
+	running := func() []agent.Agent {
+		var out []agent.Agent
+		for _, a := range ads {
+			got, _ := a.List(ctx)
+			out = append(out, got...)
+		}
+		return out
+	}
 	switch cmd {
 	case "sessions":
-		running, _ := claude.New().List(ctx)
-		found := sessions.Match(sessions.List(running, *days, store), strings.Join(fs.Args(), " "))
+		found := sessions.Match(sessions.List(ads, running(), *days, store), strings.Join(fs.Args(), " "))
 		if *asJSON {
 			if found == nil {
 				found = []sessions.Session{}
@@ -372,7 +384,7 @@ func sessionsCommand(cmd string, args []string) error {
 			case "-":
 				ticket = "kept off tickets"
 			}
-			fmt.Printf("%s  %-7s  %s  %s  [%s]\n", short(s.ID), state, s.When.Format("Jan 02 15:04"), s.Title, ticket)
+			fmt.Printf("%s  %-7s  %-6s  %s  %s  [%s]\n", short(s.ID), state, s.Tool, s.When.Format("Jan 02 15:04"), s.Title, ticket)
 			fmt.Printf("          %s", s.Cwd)
 			if len(s.Mentions) > 0 {
 				fmt.Printf(" · mentions %s", strings.Join(s.Mentions, ", "))
@@ -391,10 +403,9 @@ func sessionsCommand(cmd string, args []string) error {
 		if fs.NArg() != want {
 			return fmt.Errorf("usage: lanes link <session-id> <TICKET> | lanes unlink <session-id>")
 		}
-		s, err := sessions.Lookup(fs.Arg(0), nil)
+		s, err := sessions.Lookup(ads, fs.Arg(0), nil)
 		if err != nil { // a running session may have no transcript yet
-			running, _ := claude.New().List(ctx)
-			s, err = sessions.Lookup(fs.Arg(0), running)
+			s, err = sessions.Lookup(ads, fs.Arg(0), running())
 		}
 		if err != nil {
 			return err
@@ -403,7 +414,7 @@ func sessionsCommand(cmd string, args []string) error {
 		if cmd == "link" {
 			ticket = fs.Arg(1)
 		}
-		if err := sessions.Link(ctx, store, s.ID, ticket); err != nil {
+		if err := sessions.Link(ctx, store, s.Tool, s.ID, ticket); err != nil {
 			return err
 		}
 		if cmd == "link" {

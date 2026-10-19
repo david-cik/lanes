@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/david-cik/lanes/internal/agent"
+	"github.com/david-cik/lanes/internal/agent/claude"
 	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tracker"
@@ -57,6 +58,14 @@ func (stopper) Stop() (string, []string)                    { return "/exit", ni
 func (stopper) Command(s agent.LaunchSpec) agent.Command {
 	return agent.Command{Argv: []string{"claude", s.Prompt}, SessionID: "sid"}
 }
+
+// The fixtures' sessions are Claude's: stopper reads transcripts as Claude does.
+func (stopper) TranscriptPath(cwd, id string) string { return claude.New().TranscriptPath(cwd, id) }
+func (stopper) Transcripts(since time.Time) map[string]string {
+	return claude.New().Transcripts(since)
+}
+func (stopper) SessionInfo(p string) (agent.Info, error)  { return claude.New().SessionInfo(p) }
+func (stopper) Messages(p string, tail int64) []agent.Msg { return claude.New().Messages(p, tail) }
 
 func controlModel(t *testing.T) (*Model, *fakeTmux) {
 	ft := &fakeTmux{sessions: map[string]bool{"lanes-r1": true, "lanes-r2": true}, gone: map[string]bool{}}
@@ -540,7 +549,7 @@ func TestAskRejectsUnknownSession(t *testing.T) {
 
 func TestAskTakeOff(t *testing.T) {
 	m, _ := controlModel(t)
-	m.Update(askMsg{links: []askLink{{"x9", "-", "not ticket work"}}, known: map[string]string{"x9": "outside work"}})
+	m.Update(askMsg{links: []askLink{{"x9", "-", "not ticket work"}}, known: map[string]string{"x9": "outside work"}, tool: map[string]string{"x9": "claude"}})
 	if m.modal == nil || m.modal.title != "Take outside off its ticket?" {
 		t.Fatalf("confirm %+v", m.modal)
 	}

@@ -48,14 +48,15 @@ type autoSeen struct {
 	size int64
 }
 
-// unlinkedClaude lists sessions lanes didn't start that aren't on any open ticket.
+// unlinkedSessions lists sessions lanes didn't start, whose transcripts it can read,
+// that aren't on any open ticket.
 // A manual link of "" means the user unlinked the session on purpose: it's offered by T
 // but never auto-linked again.
-func (m *Model) unlinkedClaude() []agent.Agent {
+func (m *Model) unlinkedSessions() []agent.Agent {
 	open := m.openKeys()
 	var out []agent.Agent
 	for _, a := range m.agents {
-		if a.External && !a.Ended && a.Tool == "claude" && !open[a.TicketKey] && m.links[state.LinkKey(a.Tool, a.ID)] == "" {
+		if a.External && !a.Ended && m.transcripts(a.Tool) != nil && !open[a.TicketKey] && m.links[state.LinkKey(a.Tool, a.ID)] == "" {
 			out = append(out, a)
 		}
 	}
@@ -71,27 +72,30 @@ func (m *Model) openKeys() map[string]bool {
 }
 
 // scoreSession reads one session's transcript; a missing transcript just scores nothing.
-func scoreSession(a agent.Agent, open map[string]bool) suggest.Result {
-	p := suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), a.Cwd, a.ID)
+func scoreSession(t agent.Transcripts, a agent.Agent, open map[string]bool) suggest.Result {
+	p := t.TranscriptPath(a.Cwd, a.ID)
 	if p == "" {
 		return nil
 	}
-	r, _ := suggest.File(p, open)
-	return r
+	return suggest.File(t, p, open)
 }
 
-// suggestLinks scans the transcripts of unlinked Claude sessions for ticket keys.
+// suggestLinks scans the transcripts of unlinked sessions for ticket keys.
 func (m *Model) suggestLinks() tea.Cmd {
-	sessions, open := m.unlinkedClaude(), m.openKeys()
+	sessions, open := m.unlinkedSessions(), m.openKeys()
+	readers := map[string]agent.Transcripts{}
+	for _, a := range sessions {
+		readers[a.Tool] = m.transcripts(a.Tool)
+	}
 	if len(sessions) == 0 {
-		m.say("", fmt.Errorf("no unlinked Claude sessions to look at"))
+		m.say("", fmt.Errorf("no unlinked sessions to look at"))
 		return nil
 	}
 	m.say(fmt.Sprintf("reading %d session transcripts…", len(sessions)), nil)
 	return func() tea.Msg {
 		var rv review
 		for _, a := range sessions {
-			res := scoreSession(a, open)
+			res := scoreSession(readers[a.Tool], a, open)
 			if len(res) == 0 {
 				rv.skipped++
 				continue
@@ -204,7 +208,7 @@ func (m *Model) autoLink() tea.Cmd {
 	}
 	open, now := m.openKeys(), m.now() // up-for-grabs tickets still score, so they can outweigh yours
 	var cmds []tea.Cmd
-	for _, a := range m.unlinkedClaude() {
+	for _, a := range m.unlinkedSessions() {
 		k := state.LinkKey(a.Tool, a.ID)
 		if _, declined := m.links[k]; declined {
 			continue
@@ -214,9 +218,9 @@ func (m *Model) autoLink() tea.Cmd {
 			continue
 		}
 		m.autoChecked[k] = autoSeen{now, seen.size}
-		a, prev := a, seen.size
+		a, prev, tr := a, seen.size, m.transcripts(a.Tool)
 		cmds = append(cmds, func() tea.Msg {
-			p := suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), a.Cwd, a.ID)
+			p := tr.TranscriptPath(a.Cwd, a.ID)
 			fi, err := os.Stat(p)
 			if p == "" || err != nil {
 				return autoLinkMsg{tool: a.Tool, id: a.ID, name: a.Name}
@@ -224,8 +228,7 @@ func (m *Model) autoLink() tea.Cmd {
 			if fi.Size() == prev {
 				return autoLinkMsg{tool: a.Tool, id: a.ID, name: a.Name, size: prev, unchanged: true}
 			}
-			r, _ := suggest.File(p, open)
-			return autoLinkMsg{a.Tool, a.ID, a.Name, fi.Size(), r, false}
+			return autoLinkMsg{a.Tool, a.ID, a.Name, fi.Size(), suggest.File(tr, p, open), false}
 		})
 	}
 	return tea.Batch(cmds...)
@@ -254,10 +257,16 @@ func (m *Model) gotAutoLink(msg autoLinkMsg) {
 	m.say(fmt.Sprintf("auto-linked %s → %s (%s changes it)", msg.name, msg.res[0].Key, m.k("link")), err)
 }
 
-// endedSessions turns links to Claude sessions that are no longer running into board
+// endedSessions turns links to sessions that are no longer running into board
 // rows, so you can still find and resume them, until their transcript is older than
 // max. Runs off the UI loop (reads transcripts).
-func endedSessions(links state.Links, running []agent.Agent, max time.Duration) []agent.Agent {
+func endedSessions(ads []agent.Adapter, links state.Links, running []agent.Agent, max time.Duration) []agent.Agent {
+	readers := map[string]agent.Transcripts{}
+	for _, a := range ads {
+		if t, ok := a.(agent.Transcripts); ok {
+			readers[a.Name()] = t
+		}
+	}
 	alive := map[string]bool{}
 	for _, a := range running {
 		alive[state.LinkKey(a.Tool, a.ID)] = true
@@ -265,15 +274,16 @@ func endedSessions(links state.Links, running []agent.Agent, max time.Duration) 
 	var out []agent.Agent
 	for k, ticket := range links {
 		tool, sid, ok := strings.Cut(k, ":")
-		if !ok || ticket == "" || ticket == state.NoTicket || tool != "claude" || alive[k] {
+		tr := readers[tool]
+		if !ok || ticket == "" || ticket == state.NoTicket || tr == nil || alive[k] {
 			continue
 		}
-		p := suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), "", sid)
+		p := tr.TranscriptPath("", sid)
 		if p == "" {
 			continue
 		}
-		in, err := suggest.SessionInfo(p)
-		if err != nil || in.Cwd == "" || time.Since(in.When) > max || strings.HasPrefix(in.Entrypoint, "sdk") {
+		in, err := tr.SessionInfo(p)
+		if err != nil || in.Cwd == "" || time.Since(in.When) > max || in.Background {
 			continue // gone, too old, or run by a tool or plugin rather than a person
 		}
 		name := in.Title
@@ -287,27 +297,33 @@ func endedSessions(links state.Links, running []agent.Agent, max time.Duration) 
 	return out
 }
 
-// toolSessions remembers, per session id, whether a running session was started by a
+// toolSessions remembers, per tool:session, whether a running session was started by a
 // tool or plugin rather than a person. Some (a memory plugin's observer, say) report
-// themselves as interactive; only their transcript's entrypoint ("sdk-…") tells.
+// themselves as interactive; only their transcript tells.
 var toolSessions sync.Map
 
 // dropToolSessions leaves out running sessions that tools and plugins started. Each
 // transcript is read once; one not written yet is asked about again next refresh.
-func dropToolSessions(agents []agent.Agent) []agent.Agent {
+func dropToolSessions(ads []agent.Adapter, agents []agent.Agent) []agent.Agent {
 	return slices.DeleteFunc(agents, func(a agent.Agent) bool {
-		if !a.External || a.Ended || a.Tool != "claude" {
+		var tr agent.Transcripts
+		for _, ad := range ads {
+			if ad.Name() == a.Tool {
+				tr, _ = ad.(agent.Transcripts)
+			}
+		}
+		if !a.External || a.Ended || tr == nil {
 			return false
 		}
-		if v, ok := toolSessions.Load(a.ID); ok {
+		k := state.LinkKey(a.Tool, a.ID)
+		if v, ok := toolSessions.Load(k); ok {
 			return v.(bool)
 		}
-		in, err := suggest.SessionInfo(suggest.TranscriptPath(os.Getenv("CLAUDE_CONFIG_DIR"), a.Cwd, a.ID))
+		in, err := tr.SessionInfo(tr.TranscriptPath(a.Cwd, a.ID))
 		if err != nil || in.Entrypoint == "" {
 			return false
 		}
-		tool := strings.HasPrefix(in.Entrypoint, "sdk")
-		toolSessions.Store(a.ID, tool)
-		return tool
+		toolSessions.Store(k, in.Background)
+		return in.Background
 	})
 }

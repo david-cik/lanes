@@ -198,7 +198,10 @@ project's coordinator can answer them as well, if `coordinator.approve` lets it 
 
 ## Sessions lanes didn't start
 
-`T` reads the transcripts Claude keeps for each unlinked session and proposes the open
+Sessions you started yourself show up for tools whose sessions lanes can list and whose
+transcripts it can read (Claude today; each tool's adapter says what it can do).
+
+`T` reads the transcript kept for each unlinked session and proposes the open
 ticket it mentions most — counting what you typed above commands, and those above the
 agent's own text, and recent mentions above old ones. Clear matches come pre-checked;
 mixed ones show the alternatives. Nothing is linked until you press enter, and `t`

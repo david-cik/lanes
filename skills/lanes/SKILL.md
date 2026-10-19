@@ -13,7 +13,7 @@ can talk to the running lanes panel to watch and steer the agents on the board.
 
 1. Find candidates:
    `lanes sessions --json [words…]` — running and recent (`--days N`, default 7) sessions
-   with `id`, `title`, `cwd`, `first_prompt`, `recent_prompts`, `mentions` (ticket keys the
+   with `id`, `tool`, `title`, `cwd`, `first_prompt`, `recent_prompts`, `mentions` (ticket keys the
    session talks about), and its current `ticket` (`"-"` = deliberately on no ticket).
    Words filter by substring; run it without words if a filtered search finds nothing.
 2. Pick the session the user means from title, prompts, folder, and mentions. If two or

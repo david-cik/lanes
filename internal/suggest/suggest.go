@@ -1,18 +1,13 @@
-// Package suggest guesses which ticket a Claude session is working on by reading the
-// transcript Claude keeps for it. The transcript format isn't documented, so parsing is
-// lenient: lines that don't look as expected are skipped, never fatal.
+// Package suggest guesses which ticket an agent session is working on from its
+// transcript, read through its tool's adapter (agent.Transcripts).
 package suggest
 
 import (
-	"bufio"
-	"encoding/json"
-	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
-	"time"
+
+	"github.com/david-cik/lanes/internal/agent"
 )
 
 // Only the end of a transcript is read: recent work says most about what the session
@@ -54,117 +49,37 @@ func (r Result) Confident() bool {
 	return (len(r) == 1 || r[0].Score >= 2*r[1].Score) && 2*r[0].Score >= total
 }
 
-// TranscriptPath finds Claude's transcript for a session in dir, or "".
-func TranscriptPath(configDir, cwd, sessionID string) string {
-	if configDir == "" {
-		home, _ := os.UserHomeDir()
-		configDir = filepath.Join(home, ".claude")
-	}
-	slug := regexp.MustCompile(`[^A-Za-z0-9]`).ReplaceAllString(cwd, "-")
-	p := filepath.Join(configDir, "projects", slug, sessionID+".jsonl")
-	if _, err := os.Stat(p); err == nil {
-		return p
-	}
-	if m, _ := filepath.Glob(filepath.Join(configDir, "projects", "*", sessionID+".jsonl")); len(m) > 0 {
-		return m[0]
-	}
-	return ""
+// File ranks the open tickets the end of the transcript at path mentions (any plausible
+// key when open is nil).
+func File(t agent.Transcripts, path string, open map[string]bool) Result {
+	return Score(t.Messages(path, tailBytes), open)
 }
 
-// File scores the end of the transcript at path against the given open ticket keys.
-func File(path string, open map[string]bool) (Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var r io.Reader = f
-	if fi, err := f.Stat(); err == nil && fi.Size() > tailBytes {
-		if _, err := f.Seek(-tailBytes, io.SeekEnd); err != nil {
-			return nil, err
-		}
-		br := bufio.NewReader(f)
-		br.ReadString('\n') // drop the partial first line
-		r = br
-	}
-	return Score(r, open), nil
-}
-
-type entry struct {
-	Type    string `json:"type"`
-	IsMeta  bool   `json:"isMeta"` // text Claude injected (skills, reminders), not typed
-	Message struct {
-		Content json.RawMessage `json:"content"`
-	} `json:"message"`
-}
-
-type piece struct {
-	Type  string          `json:"type"`
-	Text  string          `json:"text"`
-	Input json.RawMessage `json:"input"`
-}
-
-// injected recognises text Claude adds to the user's side of the conversation.
-func injected(s string) bool {
-	s = strings.TrimSpace(s)
-	for _, p := range []string{"<system-reminder>", "<task-notification>", "<local-command", "<command-"} {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// Score reads JSONL transcript lines and ranks the open ticket keys they mention
-// (any key when open is nil).
-// Later lines weigh more (×0.5 at the start of what's read, ×1.5 at the end).
-func Score(r io.Reader, open map[string]bool) Result {
+// Score ranks the open ticket keys msgs mention (any key when open is nil). Later
+// messages weigh more (×0.5 at the start, ×1.5 at the end).
+func Score(msgs []agent.Msg, open map[string]bool) Result {
 	type hit struct {
 		key    string
 		weight float64
 		typed  bool
 	}
 	var hits []hit
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 1<<20), 16<<20)
-	for sc.Scan() {
-		var e entry
-		if json.Unmarshal(sc.Bytes(), &e) != nil || (e.Type != "user" && e.Type != "assistant") {
-			continue
-		}
-		add := func(s string, w float64, typed bool) {
-			if typed && (e.IsMeta || injected(s)) { // shown as user text, but not from the user
-				w, typed = weightText, false
-			}
-			for _, m := range keyRe.FindAllStringSubmatch(s, -1) {
-				k := strings.ToUpper(m[1]) + "-" + m[2]
-				if open == nil && plausibleKey(m[1]) || open[k] { // nil: any plausible key
-					hits = append(hits, hit{k, w, typed})
-				}
+	add := func(s string, w float64, typed bool) {
+		for _, m := range keyRe.FindAllStringSubmatch(s, -1) {
+			k := strings.ToUpper(m[1]) + "-" + m[2]
+			if open == nil && plausibleKey(m[1]) || open[k] { // nil: any plausible key
+				hits = append(hits, hit{k, w, typed})
 			}
 		}
-		var s string
-		if json.Unmarshal(e.Message.Content, &s) == nil { // plain string content
-			if e.Type == "user" {
-				add(s, weightTyped, true)
-			} else {
-				add(s, weightText, false)
-			}
-			continue
-		}
-		var parts []piece
-		if json.Unmarshal(e.Message.Content, &parts) != nil {
-			continue
-		}
-		for _, p := range parts {
-			switch {
-			case p.Type == "text" && e.Type == "user":
-				add(p.Text, weightTyped, true)
-			case p.Type == "text":
-				add(p.Text, weightText, false)
-			case p.Type == "tool_use":
-				add(string(p.Input), weightTool, false)
-			} // tool results (command output) are skipped: too noisy
+	}
+	for _, m := range msgs {
+		switch {
+		case m.Typed:
+			add(m.Text, weightTyped, true)
+		case m.Text != "": // the agent's prose, or text the tool put on the user's side
+			add(m.Text, weightText, false)
+		default:
+			add(m.Tool, weightTool, false)
 		}
 	}
 	byKey := map[string]*Candidate{}
@@ -197,130 +112,6 @@ func Score(r io.Reader, open map[string]bool) Result {
 	return out
 }
 
-// Info is what a transcript says about its session.
-type Info struct {
-	Cwd        string
-	Entrypoint string // how it was started: "cli" for interactive, "sdk-…" for tools and plugins
-	First      string // the first message the user typed (usually says what the session is for)
-	Title      string // latest custom or AI-generated title
-	When       time.Time
-}
-
-// SessionInfo reads a transcript's folder (from its start) and latest title (from its
-// end). Like the rest of this package it tolerates lines it doesn't understand.
-func SessionInfo(path string) (Info, error) {
-	var in Info
-	f, err := os.Open(path)
-	if err != nil {
-		return in, err
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return in, err
-	}
-	in.When = fi.ModTime()
-	sc := bufio.NewScanner(io.LimitReader(f, 256<<10))
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	for sc.Scan() && (in.Cwd == "" || in.First == "") {
-		var head struct {
-			Cwd        string `json:"cwd"`
-			Entrypoint string `json:"entrypoint"`
-		}
-		if json.Unmarshal(sc.Bytes(), &head) == nil && in.Cwd == "" {
-			in.Cwd, in.Entrypoint = head.Cwd, head.Entrypoint
-		}
-		if in.First == "" {
-			if t, ok := typed(sc.Bytes()); ok {
-				in.First = t
-			}
-		}
-	}
-	const tail = 512 << 10
-	if fi.Size() > tail {
-		f.Seek(-tail, io.SeekEnd)
-	} else {
-		f.Seek(0, io.SeekStart)
-	}
-	var t struct {
-		Type   string `json:"type"`
-		Custom string `json:"customTitle"`
-		AI     string `json:"aiTitle"`
-	}
-	custom := ""
-	sc = bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
-	for sc.Scan() {
-		t.Custom, t.AI = "", ""
-		if json.Unmarshal(sc.Bytes(), &t) != nil {
-			continue
-		}
-		switch {
-		case t.Type == "custom-title" && t.Custom != "":
-			custom = t.Custom
-		case t.Type == "ai-title" && t.AI != "":
-			in.Title = t.AI
-		}
-	}
-	if custom != "" {
-		in.Title = custom
-	}
-	return in, nil
-}
-
-// Prompts returns the last n messages the user typed in the session, newest last.
-func Prompts(path string, n int) []string {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	const tail = 1 << 20
-	if fi, err := f.Stat(); err == nil && fi.Size() > tail {
-		f.Seek(-tail, io.SeekEnd)
-	}
-	var out []string
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
-	for sc.Scan() {
-		if t, ok := typed(sc.Bytes()); ok {
-			out = append(out, t)
-		}
-	}
-	if len(out) > n {
-		out = out[len(out)-n:]
-	}
-	return out
-}
-
-// typed returns the text of a transcript line if it's a message the user typed.
-func typed(line []byte) (string, bool) {
-	var e entry
-	if json.Unmarshal(line, &e) != nil || e.Type != "user" || e.IsMeta {
-		return "", false
-	}
-	var text string
-	if json.Unmarshal(e.Message.Content, &text) != nil {
-		var parts []piece
-		if json.Unmarshal(e.Message.Content, &parts) != nil {
-			return "", false
-		}
-		for _, p := range parts {
-			if p.Type == "text" {
-				text += p.Text + " "
-			}
-		}
-	}
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" || injected(text) {
-		return "", false
-	}
-	if r := []rune(text); len(r) > 200 {
-		text = string(r[:199]) + "…"
-	}
-	return text, true
-}
-
 // plausibleKey filters "any key" scoring to prefixes that look like a tracker's team
 // key (2–5 letters), so file paths, terminal names, and ids don't count.
 func plausibleKey(prefix string) bool {
@@ -337,10 +128,10 @@ func plausibleKey(prefix string) bool {
 
 // FileKeys scores a transcript against any key with one of the given prefixes
 // (upper case, e.g. "SRE"); with no prefixes, any plausible-looking key.
-func FileKeys(path string, prefixes map[string]bool) (Result, error) {
-	r, err := File(path, nil)
-	if err != nil || len(prefixes) == 0 {
-		return r, err
+func FileKeys(t agent.Transcripts, path string, prefixes map[string]bool) Result {
+	r := File(t, path, nil)
+	if len(prefixes) == 0 {
+		return r
 	}
 	var out Result
 	for _, c := range r {
@@ -348,39 +139,44 @@ func FileKeys(path string, prefixes map[string]bool) (Result, error) {
 			out = append(out, c)
 		}
 	}
-	return out, nil
+	return out
 }
 
-// LastReply is what the assistant wrote since the last prompt typed into the session at
-// path (its text, not its tool calls), read from the end of the transcript.
-func LastReply(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	const tail = 4 << 20
-	if fi, err := f.Stat(); err == nil && fi.Size() > tail {
-		f.Seek(-tail, io.SeekEnd)
-	}
+// Prompts returns the last n messages the user typed in the session, newest last, each
+// squeezed to one line.
+func Prompts(t agent.Transcripts, path string, n int) []string {
 	var out []string
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
-	for sc.Scan() {
-		if _, ok := typed(sc.Bytes()); ok {
+	for _, m := range t.Messages(path, 1<<20) {
+		if s := oneLine(m.Text); m.Typed && s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) > n {
+		out = out[len(out)-n:]
+	}
+	return out
+}
+
+// LastReply is what the assistant wrote since the last prompt typed into the session
+// (its text, not its tool calls).
+func LastReply(t agent.Transcripts, path string) string {
+	var out []string
+	for _, m := range t.Messages(path, 4<<20) {
+		switch {
+		case m.Typed && strings.TrimSpace(m.Text) != "":
 			out = out[:0]
-			continue
-		}
-		var e entry
-		var parts []piece
-		if json.Unmarshal(sc.Bytes(), &e) != nil || e.Type != "assistant" || json.Unmarshal(e.Message.Content, &parts) != nil {
-			continue
-		}
-		for _, p := range parts {
-			if p.Type == "text" && strings.TrimSpace(p.Text) != "" {
-				out = append(out, strings.TrimSpace(p.Text))
-			}
+		case !m.User && strings.TrimSpace(m.Text) != "":
+			out = append(out, strings.TrimSpace(m.Text))
 		}
 	}
 	return strings.Join(out, "\n\n")
+}
+
+// oneLine squeezes text to one line of at most 200 characters.
+func oneLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:199]) + "…"
+	}
+	return s
 }

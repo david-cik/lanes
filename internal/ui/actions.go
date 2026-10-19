@@ -113,6 +113,13 @@ func named(name, setting string) string {
 	return fmt.Sprintf(" (%s = %q isn't installed, or can't)", setting, name)
 }
 
+// transcripts is the transcript reader of tool, or nil when lanes can't read its
+// transcripts.
+func (m *Model) transcripts(tool string) agent.Transcripts {
+	t, _ := m.adapter(tool).(agent.Transcripts)
+	return t
+}
+
 func (m *Model) adapter(name string) agent.Adapter {
 	for _, a := range m.opt.Adapters {
 		if a.Name() == name {
