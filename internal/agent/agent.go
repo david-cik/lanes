@@ -31,6 +31,7 @@ type Agent struct {
 	TicketKey string // preset for launched agents; otherwise filled by matching
 	RecordID  string // lanes launch record, for launched agents
 	Pane      string // tmux pane, for launched agents
+	Project   string // the project it coordinates, for a coordinator
 }
 
 // LaunchSpec is what lanes asks an adapter to start.

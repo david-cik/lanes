@@ -3,6 +3,7 @@
 package launch
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -175,6 +176,8 @@ type Plan struct {
 
 	InPlace    bool   // run in Worktree as it is (adopting a session): no worktree or branch is created
 	ResumeFrom string // tool session to fork (adopt)
+	Name       string // the agent's name; "" = from the ticket
+	Project    string // the project a coordinator looks after
 }
 
 // FolderPlan starts a new agent for ticket d in dir as it is: no worktree or branch is
@@ -214,7 +217,8 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 		ID: state.NewID(), Tool: p.Adapter.Name(), TicketKey: p.Ticket.Key, Repo: p.Repo.Path,
 		Worktree: p.Worktree, Branch: p.Branch, CreatedAt: time.Now().UTC(), AdoptedFrom: p.ResumeFrom,
 	}
-	rec.Name = strings.TrimSpace(p.Ticket.Key + " " + Slug(p.Ticket.Title))
+	rec.Name = cmp.Or(p.Name, strings.TrimSpace(p.Ticket.Key+" "+Slug(p.Ticket.Title)))
+	rec.Project = p.Project
 	cmd := p.Adapter.Command(agent.LaunchSpec{
 		Name: rec.Name, Prompt: p.Prompt, Args: p.Args, HookBin: p.HookBin,
 		ResumeFrom: p.ResumeFrom,

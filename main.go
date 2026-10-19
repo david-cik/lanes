@@ -2,6 +2,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -280,7 +281,8 @@ func controlCommand(cmd string, args []string) error {
 	if bad {
 		return fmt.Errorf("usage: %s", usage[cmd])
 	}
-	out, err := hook.Call(config.SocketPath(), cmd, req)
+	// An agent lanes started talks to the panel that started it.
+	out, err := hook.Call(cmp.Or(os.Getenv("LANES_SOCKET"), config.SocketPath()), cmd, req)
 	if err != nil {
 		return err
 	}

@@ -31,6 +31,9 @@ type Record struct {
 	// AdoptedFrom is the session this one was forked from (adopt or resume). The
 	// original may keep running; the board hides it while this agent lives.
 	AdoptedFrom string `json:"adopted_from,omitempty"`
+	// Project is set on a project's coordinator, an agent on no ticket that looks after
+	// the project's tickets and their agents.
+	Project string `json:"project,omitempty"`
 }
 
 // Session is the tmux session that is this agent's home.

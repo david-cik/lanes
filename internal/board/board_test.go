@@ -139,3 +139,15 @@ func TestByProject(t *testing.T) {
 		t.Fatalf("got  %s\nwant %s", g, want)
 	}
 }
+
+func TestCoordinatorsGetTheirOwnGroup(t *testing.T) {
+	issues := []tracker.Issue{{Key: "ABC-1", Title: "one", Team: "Alpha", State: "Todo", StateType: "unstarted", Project: "Apollo"}}
+	agents := []agent.Agent{
+		{Name: "coordinator · Apollo", TicketKey: state.NoTicket, Project: "Apollo", RecordID: "c1"},
+		{Name: "scratch", Branch: "main"},
+	}
+	want := "Alpha\n Todo\n  ABC-1 one\nCoordinators\n @coordinator · Apollo\nUnlinked\n @scratch\n"
+	if got := render(Build(issues, agents, nil, nil)); got != want {
+		t.Fatalf("got\n%s", got)
+	}
+}

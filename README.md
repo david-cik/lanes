@@ -90,6 +90,7 @@ Status: a spinner while working, `✓` ready (finished a turn you haven't looked
 | `N` | create a ticket, assigned to you in Todo, in the team (and project) of the row you're on. Claude drafts it — from a few words you type, or, on a session's row, from that conversation (and the session goes on the new ticket) — and you review it: `y` create, `e` edit in `$EDITOR`, `esc` drop. If an open ticket already covers it, Claude says so (and, for a session, `l` puts it there instead). If Claude can't be reached, you type the title yourself |
 | `n` | start an agent on the selected ticket |
 | `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running, off the board); on an ended session, resume it |
+| `C` | the project's coordinator (on a project, or a ticket in one): show it, or start one — see [below](#a-projects-coordinator-c) |
 | `a` | answer the selected (or oldest) waiting permission request |
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
@@ -219,6 +220,17 @@ lanes unlink <session-id>          # take it off its ticket
 Copy `skills/lanes` into `~/.claude/skills/` and you can just tell Claude "attach my
 session about the export bug to ABC-12". A running panel shows the change within seconds.
 
+### A project's coordinator (`C`)
+
+On a project heading, or a ticket in a project, `C` starts that project's coordinator: a
+Claude session on no ticket that keeps the project's agents moving and talks to them for
+you. It opens with a summary of where the project stands and asks what you want done; from
+there you can say things like "start agents on the two DNS tickets and keep them from
+overlapping". It's listed under **Coordinators** at the bottom of the board, and there's
+one per project (`C` again shows it). It uses the commands below, which it may run without
+asking; starting an agent still needs your yes in the panel, and the agents' permission
+prompts stay yours. You can always talk to a ticket's agent directly as before.
+
 ### Letting one agent coordinate others
 
 A running panel also takes requests from other programs, so one agent can look after a
@@ -229,7 +241,7 @@ or its ticket key when one agent is on that ticket.
 ```sh
 lanes agents [--project NAME]         # tickets (state, project) with their agents: status, ready, waiting, recent activity
 lanes start <TICKET> [instructions…]  # ask you to start an agent on a ticket; the instructions go after its first prompt
-lanes send <agent> <text…>            # type text into an agent lanes started, and press Enter
+lanes send <agent> <text…>            # type text into an agent lanes started, and press Enter (refused while it shows a prompt)
 lanes read <agent>                    # what the agent wrote since its last prompt
 lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
                                       # block until an agent starts, finishes a turn (ready), needs you, or ends

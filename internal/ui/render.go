@@ -153,7 +153,7 @@ func (m *Model) rowSegs(i int, st rowStats) []seg {
 		}
 		return out
 	case board.UnlinkedRow:
-		return m.laneHead(rail, "UNLINKED", st.count, faint)
+		return m.laneHead(rail, strings.ToUpper(r.Text), st.count, faint)
 	case board.StateRow:
 		title := strings.ToUpper(r.Text)
 		if isPoolLane(r) {
@@ -208,6 +208,9 @@ func (m *Model) agentSegs(r board.Row, last bool, cont string) []seg {
 		name = bold
 	}
 	shown := a.Name
+	if a.Project != "" { // under Coordinators: the project says it all
+		shown = a.Project
+	}
 	if r.Level > 1 && a.TicketKey != "" { // under its ticket: the key is already on the line above
 		if t := strings.TrimSpace(strings.TrimPrefix(a.Name, a.TicketKey)); t != a.Name {
 			shown = t

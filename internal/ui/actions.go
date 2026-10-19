@@ -516,7 +516,11 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 	}
 	m.focus(msg.rec.ID, msg.rec.Pane)
 	m.event("started", msg.rec.ID, "")
-	m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)
+	if msg.rec.Project != "" {
+		m.say(fmt.Sprintf("started the coordinator of %s in %s", msg.rec.Project, home(msg.rec.Worktree)), nil)
+	} else {
+		m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)
+	}
 	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane), msg.claim) // claim only a ticket an agent started on
 }
 

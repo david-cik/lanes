@@ -415,7 +415,7 @@ func rowIDs(rows []board.Row) []string {
 			ids[i] = "project:" + team + "/" + lane + "/" + r.Text
 		case board.UnlinkedRow:
 			team, lane = "", ""
-			ids[i] = "unlinked"
+			ids[i] = "group:" + r.Text
 		case board.TicketRow:
 			ids[i] = "ticket:" + r.Issue.Key
 		case board.AgentRow:

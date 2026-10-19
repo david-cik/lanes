@@ -81,6 +81,7 @@ var helpSections = []helpSection{
 		{"a", "answer a waiting request"},
 		{"x", "stop the agent (worktree is kept)"},
 		{"A", "adopt a session lanes didn't start"},
+		{"C", "the project's coordinator: an agent that runs the others"},
 	}},
 	{"Sessions on tickets", [][2]string{
 		{"t", "move a session to a ticket, or take it off"},

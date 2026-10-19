@@ -30,14 +30,18 @@ type Row struct {
 	Agent *agent.Agent
 }
 
+// Coordinators is the group, after the teams, of agents looking after a project.
+const Coordinators = "Coordinators"
+
 // PoolLane is the lane, first in each team, of unassigned tickets ready to pick up.
 const PoolLane = "Up for grabs"
 
 // stateRank orders a team's workflow states; Linear's MCP exposes no position.
 var stateRank = map[string]int{"triage": 0, "backlog": 1, "unstarted": 2, "started": 3}
 
-// Build groups issues team → state → ticket → agents. Agents whose ticket is not
-// in the list go to a trailing Unlinked group. It sets TicketKey on the agents
+// Build groups issues team → state → ticket → agents. Project coordinators go to a
+// trailing Coordinators group, and agents whose ticket is not in the list to a
+// trailing Unlinked group (both UnlinkedRows). It sets TicketKey on the agents
 // passed in, so callers should pass a copy they own.
 //
 // An agent's ticket is, in order: preset (launched by lanes), a manual link
@@ -46,13 +50,18 @@ var stateRank = map[string]int{"triage": 0, "backlog": 1, "unstarted": 2, "start
 func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stateOrder map[string][]string) []Row {
 	pre := link.Prefixes(issues)
 	byKey := map[string][]*agent.Agent{}
-	var unlinked []*agent.Agent
+	var unlinked, coordinators []*agent.Agent
 	open := map[string]bool{}
 	for _, i := range issues {
 		open[i.Key] = true
 	}
 	for idx := range agents {
 		a := &agents[idx]
+		if a.Project != "" {
+			a.TicketKey = ""
+			coordinators = append(coordinators, a)
+			continue
+		}
 		if a.TicketKey == "" {
 			a.TicketKey = links[state.LinkKey(a.Tool, a.ID)]
 		}
@@ -97,10 +106,15 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 			rows = append(rows, Row{Kind: AgentRow, Level: 3, Agent: a})
 		}
 	}
-	if len(unlinked) > 0 {
-		rows = append(rows, Row{Kind: UnlinkedRow, Text: "Unlinked"})
-		for _, a := range unlinked {
-			rows = append(rows, Row{Kind: AgentRow, Level: 1, Agent: a})
+	for _, g := range []struct {
+		name   string
+		agents []*agent.Agent
+	}{{Coordinators, coordinators}, {"Unlinked", unlinked}} {
+		if len(g.agents) > 0 {
+			rows = append(rows, Row{Kind: UnlinkedRow, Text: g.name})
+			for _, a := range g.agents {
+				rows = append(rows, Row{Kind: AgentRow, Level: 1, Agent: a})
+			}
 		}
 	}
 	return rows

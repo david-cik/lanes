@@ -169,6 +169,9 @@ func New(opt Options) *Model {
 		m.opt.Prefix = "Ctrl-b"
 	}
 	m.notice = opt.Notice
+	// Event seqs start at the panel's start time, so a newer panel's are higher than any
+	// an older one gave out: a `lanes wait --after` from before a restart misses nothing.
+	m.ctlSeq = int(m.now().UnixMilli())
 	if l, err := opt.Store.Links(); err == nil {
 		m.links = l
 	} else {
@@ -529,6 +532,8 @@ func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 		m.showHelp()
 	case "A":
 		return m.adoptSelected()
+	case "C":
+		return m.startCoordinator()
 	case "T":
 		return m.suggestLinks()
 	case ":":

@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/hook"
+	"github.com/david-cik/lanes/internal/state"
 )
 
 // ctl sends control request op with args and returns where its answer lands (nil
@@ -157,7 +160,7 @@ func TestControlWaitAfterPanelRestart(t *testing.T) {
 	m, _, _ := hookModel(t)
 	event(m, "r1", "UserPromptSubmit")
 	event(m, "r1", "Stop")
-	got, _ := ctl(m, 1, "wait", `{"after":57}`) // a seq from the panel before this one
+	got, _ := ctl(m, 1, "wait", `{"after":57}`) // a seq from the panel before this one (they start lower)
 	if evs, _ := (*got)["events"].([]any); len(evs) != 1 {
 		t.Fatalf("%v", *got)
 	}
@@ -173,5 +176,62 @@ func TestStaleStartNoteIgnored(t *testing.T) {
 	feedLaunch(m, cmd)
 	if text := strings.Join(m.modal.lines, "\n"); strings.Contains(text, "asked by") || strings.Contains(text, "old instructions") {
 		t.Fatalf("modal %q", text)
+	}
+}
+
+func TestCoordinatorStartsOncePerProject(t *testing.T) {
+	m, ft, _ := hookModel(t)
+	m.opt.Config.LaunchDir = t.TempDir()
+	m.issues[0].Project = "Apollo"
+	m.rebuild()
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(key("C"))
+	if m.modal == nil || !strings.Contains(m.modal.title, "coordinator for Apollo") {
+		t.Fatalf("modal %+v", m.modal)
+	}
+	_, cmd := m.Update(key("y"))
+	m.Update(cmd()) // launchedMsg
+	argv := strings.Join(ft.argv, "\n")
+	if !strings.Contains(argv, "--allowedTools=Bash(lanes agents:*),Bash(lanes start:*),Bash(lanes send:*),Bash(lanes read:*),Bash(lanes wait:*)") ||
+		!strings.Contains(argv, `lanes agents --project "Apollo"`) || !strings.Contains(argv, "coordinator · Apollo") {
+		t.Fatalf("argv:\n%s", argv)
+	}
+	if !strings.Contains(m.notice, "started the coordinator of Apollo") || m.live[len(m.live)-1].Project != "Apollo" {
+		t.Fatalf("notice %q live %+v", m.notice, m.live)
+	}
+	m.Update(agentsMsg{agents: append(slices.Clone(m.agents), agent.Agent{ID: "c", Tool: "claude", Name: "coordinator · Apollo",
+		TicketKey: state.NoTicket, RecordID: m.live[len(m.live)-1].ID, Project: "Apollo", Status: agent.Idle}), live: m.live})
+	if v := view(m); !strings.Contains(v, "COORDINATORS") || !rowHas(v, "○ Apollo", "idle") {
+		t.Fatalf("view:\n%s", v)
+	}
+	m.modal = nil
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(key("C")) // one per project: shows the one there is
+	if m.modal != nil || !strings.Contains(m.notice, "already has its coordinator") {
+		t.Fatalf("modal %+v notice %q", m.modal, m.notice)
+	}
+}
+
+func TestCoordinatorNeedsAProject(t *testing.T) {
+	m, _, _ := hookModel(t)
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(key("C"))
+	if m.modal != nil || !strings.Contains(m.notice, "select a project") {
+		t.Fatalf("modal %+v notice %q", m.modal, m.notice)
+	}
+}
+
+func TestControlSendRefusedWhileAPromptIsOpen(t *testing.T) {
+	m, ft, _ := hookModel(t)
+	permission(m, 7, "r1")
+	got, cmd := ctl(m, 1, "send", `{"agent":"r1","text":"go ahead"}`)
+	runCmd(cmd)
+	if e, _ := (*got)["error"].(string); !strings.Contains(e, "only the user can answer") || strings.Contains(strings.Join(ft.log, "|"), "go ahead") {
+		t.Fatalf("%v %v", *got, ft.log)
+	}
+	m.Update(trustMsg{"r2", "%2"})
+	got, _ = ctl(m, 2, "send", `{"agent":"r2","text":"go ahead"}`)
+	if e, _ := (*got)["error"].(string); !strings.Contains(e, "only the user can answer") {
+		t.Fatalf("trust prompt: %v", *got)
 	}
 }

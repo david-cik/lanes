@@ -65,6 +65,7 @@ type ctlAgent struct {
 	Branch   string    `json:"branch,omitempty"`
 	Recent   []string  `json:"recent,omitempty"` // latest activity, newest last
 	Ticket   string    `json:"ticket,omitempty"`
+	Project  string    `json:"coordinates,omitempty"` // the project, for a project's coordinator
 	ended    bool
 	session  string
 	pane     string
@@ -121,6 +122,12 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 		if err == nil && (m.stopping[a.recordID] || a.ended) {
 			err = fmt.Errorf("%s has stopped", a.Name)
 		}
+		// A dialog on screen (permission, question, folder trust) would take the text and
+		// Enter as its answer. ponytail: status comes from hooks, so a dialog that opened in
+		// the last moment can still slip past; a pane-capture check would close that.
+		if st := m.hooks[a.ID]; err == nil && (a.Status == string(agent.Waiting) || st != nil && (st.pending != nil || st.trust)) {
+			err = fmt.Errorf("%s is waiting on a prompt only the user can answer; tell the user", a.Name)
+		}
 		if err == nil && m.opt.Tmux == nil {
 			err = fmt.Errorf("lanes isn't running inside tmux")
 		}
@@ -163,7 +170,7 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 		w := waiter{reply: ev.Reply, after: m.ctlSeq, only: args.Only}
 		if args.After != nil && *args.After <= m.ctlSeq {
 			w.after = *args.After
-		} else if args.After != nil { // from before the panel restarted: everything since is new
+		} else if args.After != nil { // a seq this panel never gave out: everything it has is new
 			w.after = 0
 		}
 		if m.answerWaiter(w) {
@@ -272,7 +279,7 @@ func (m *Model) ctlBoard(project string) ([]ctlTicket, []ctlAgent) {
 
 func (m *Model) ctlAgentOf(a *agent.Agent) ctlAgent {
 	c := ctlAgent{ID: hookKey(a), Name: a.Name, Tool: a.Tool, Status: string(a.Status), Since: a.Since, Lanes: a.RecordID != "",
-		Cwd: a.Cwd, Branch: a.Branch, Ticket: a.TicketKey, ended: a.Ended, session: a.ID, pane: a.Pane, recordID: a.RecordID}
+		Cwd: a.Cwd, Branch: a.Branch, Ticket: a.TicketKey, Project: a.Project, ended: a.Ended, session: a.ID, pane: a.Pane, recordID: a.RecordID}
 	if a.Ended {
 		c.Status = "ended"
 	}
