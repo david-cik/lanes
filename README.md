@@ -183,7 +183,9 @@ rings, and tmux shows a message. In the approval dialog:
 | `m` | deny with a message to the agent |
 | `p` | answer in the agent's own pane instead |
 
-Claude's own prompt stays on screen the whole time, so you can always answer there too.
+Claude's own prompt stays on screen the whole time, so you can always answer there too. A
+project's coordinator can answer them as well, if `coordinator.approve` lets it (see
+[A project's coordinator](#a-projects-coordinator-c)).
 
 ## Sessions lanes didn't start
 
@@ -229,9 +231,23 @@ Claude session on no ticket that keeps the project's agents moving and talks to 
 you. It opens with a summary of where the project stands and asks what you want done; from
 there you can say things like "start agents on the two DNS tickets and keep them from
 overlapping". It's listed under **Coordinators** at the bottom of the board, and there's
-one per project (`C` again shows it). It uses the lanes MCP tools (below), which it may
-call without asking; starting an agent still needs your yes in the panel, and the agents'
-permission prompts stay yours. You can always talk to a ticket's agent directly as before.
+one per project (`C` again shows it). It works through the lanes MCP tools (below). You
+can always talk to a ticket's agent directly as before.
+
+You can run a project entirely from its coordinator: it starts agents, answers their
+permission prompts and folder-trust prompts, and stops them. What needs your yes, and
+where, is set in the config:
+
+| `[coordinator]` | `"ask"` (default) | `"auto"` | the other |
+|---|---|---|---|
+| `start` | Claude asks you in the coordinator's pane before each start | it starts agents on its own | `"panel"`: you confirm each start in the lanes panel |
+| `approve` | it may deny; each allow asks you in its pane, showing the request | it allows and denies on its own | `"off"`: it can't answer prompts; you do, in the panel |
+
+Stopping an agent always asks you in the coordinator's pane. The coordinator runs in
+Claude's `manual` permission mode, so an `auto` or bypass default in your Claude settings
+can't skip those questions. It answers prompts of, and stops, only its own project's agents. An agent a coordinator starts doesn't
+take over the right pane; it starts in the launch folder if one is set, else in a new
+worktree in the ticket's repo (the coordinator names the repo when lanes can't tell).
 
 ### Letting one agent coordinate others
 
@@ -242,21 +258,33 @@ or its ticket key when one agent is on that ticket.
 
 ```sh
 lanes agents [--project NAME]         # tickets (state, project) with their agents: status, ready, waiting, recent activity
-lanes start <TICKET> [instructions…]  # ask you to start an agent on a ticket; the instructions go after its first prompt
+lanes start [--repo R] <TICKET> [instructions…]
+                                      # start an agent on a ticket (see below); the instructions go after its first prompt
 lanes send <agent> <text…>            # type text into an agent lanes started, and press Enter (refused while it shows a prompt)
 lanes read <agent>                    # what the agent wrote since its last prompt
+lanes approve <agent> <request…>      # allow what it's waiting on: a permission request (once), or "folder-trust prompt"
+lanes deny <agent> <request> [why…]   # deny a permission request, telling it why
+lanes stop <agent>                    # stop an agent lanes started (its worktree is kept)
 lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
                                       # block until an agent starts, finishes a turn (ready), needs you, or ends
 ```
 
-The same requests are MCP tools (`agents`, `start`, `send`, `read`, `wait`) from
+`approve` and `deny` work only for a project's coordinator, and take the request repeated exactly as `lanes agents` (`waiting`) or
+`lanes wait` (`needs_you`) shows it, e.g. `"Bash: npm test"`, so the caller's own permission
+prompt shows what it's answering, and an answer can't land on a newer request. They're off
+entirely with `approve = "off"`.
+
+The same requests are MCP tools (`agents`, `start`, `send`, `read`, `wait`, `approve`,
+`deny`, `stop`) from
 `lanes mcp`, a server on stdin/stdout. Coordinators get it automatically; to give it to
 any other Claude session, `claude mcp add lanes -- lanes mcp`. An agent's own events are
 left out of its waits.
 
-`lanes start` never starts anything by itself: the panel shows the usual start screen,
-marked as asked for by another agent with its instructions, and you say yes or no
-(instructions not used within two minutes are dropped).
+From a project's coordinator, `lanes start` starts the agent (subject to
+`coordinator.start`) and answers with its id and a `seq`. From anything else it never
+starts anything by itself: the panel shows the usual start screen, marked as asked for by
+another agent with its instructions, and you say yes or no (instructions not used within
+two minutes are dropped).
 `lanes wait` answers with the events and a `seq`; pass it back as `--after` and nothing
 that happened in between is missed (`"missed": true` says the panel had already
 dropped some, after a long gap; a `seq` from before the panel restarted gets everything
@@ -303,6 +331,10 @@ preamble = ""                 # standing instructions, e.g. "Run the tests befor
 [agents.claude]
 args = []                     # extra arguments, e.g. ["--model", "sonnet"]
 
+[coordinator]                 # what a project's coordinator (C) may do; see "A project's coordinator"
+start = "ask"                 # "ask" (in its pane), "auto", or "panel"
+approve = "ask"               # answering agents' prompts: "ask" (each allow, in its pane), "auto", or "off"
+
 [teams."Platform"]            # order of a team's workflow states on the board; the first
 state_order = ["Backlog", "Todo", "In Progress", "In Review"]   # started one is where a claimed ticket goes
 ```
@@ -315,7 +347,7 @@ hand.
 
 - Store or evaluate permission rules — Claude does, through its own settings.
 - Press keys in an agent's terminal on its own: only text you send (`s`), or an agent you
-  run sends (`lanes send`).
+  run sends (`lanes send`, or `lanes approve` answering a folder-trust prompt).
 - Edit your Claude settings, except `install-hooks` / `uninstall-hooks` after you agree.
 - Delete worktrees or branches.
 - Write to your issue tracker, except creating a ticket you ask for (`N`) and claiming an

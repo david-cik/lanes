@@ -79,12 +79,16 @@ func run() error {
 
   For an agent coordinating others (they talk to the running panel; output is JSON):
   lanes agents [--project NAME]          the board's tickets and the agents on them
-  lanes start <TICKET> [instructions…]   ask the user to start an agent on a ticket
+  lanes start [--repo R] <TICKET> [instructions…]
+                                         start an agent on a ticket (the user confirms, see coordinator.start)
   lanes send <agent> <text…>             type text into an agent lanes started
   lanes read <agent>                     an agent's latest reply
+  lanes approve <agent> <request…>       a coordinator allows what an agent waits on (a permission request, or "folder-trust prompt")
+  lanes deny <agent> <request> [why…]    a coordinator denies a permission request
+  lanes stop <agent>                     stop an agent lanes started (its worktree is kept)
   lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
                                          block until an agent starts, finishes a turn, needs you, or ends
-  lanes mcp                              the same, as an MCP server on stdin/stdout (tools agents, start, send, read, wait)
+  lanes mcp                              the same, as an MCP server on stdin/stdout (the same as tools)
 
 flags:
 `)
@@ -102,13 +106,11 @@ flags:
 			version = bi.Main.Version
 		}
 		return mcp.Serve(os.Stdin, os.Stdout, func(op string, args map[string]any) ([]byte, error) {
-			if op == "wait" {
-				args["self"] = os.Getenv("LANES_AGENT_ID")
-			}
+			args["self"] = os.Getenv("LANES_AGENT_ID")
 			return hook.Call(cmp.Or(os.Getenv("LANES_SOCKET"), config.SocketPath()), op, args)
 		}, version)
 	}
-	if len(os.Args) > 1 && slices.Contains([]string{"agents", "start", "send", "read", "wait"}, os.Args[1]) {
+	if len(os.Args) > 1 && slices.Contains([]string{"agents", "start", "send", "read", "wait", "approve", "deny", "stop"}, os.Args[1]) {
 		return controlCommand(os.Args[1], os.Args[2:])
 	}
 	flag.Parse()
@@ -262,12 +264,14 @@ func takeOver(tm tmux.Client, panel string) (func(), error) {
 func controlCommand(cmd string, args []string) error {
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	project := fs.String("project", "", "only this project's tickets")
+	repo := fs.String("repo", "", "start: the repo for its worktree (name or path)")
 	after := fs.Int("after", -1, "report events after this seq (from the last answer); default: only new ones")
 	timeout := fs.Duration("timeout", 90*time.Second, "give up waiting after this long (under a 2-minute tool timeout)")
 	fs.Parse(args)
-	rest, req := fs.Args(), map[string]any{}
+	rest, req := fs.Args(), map[string]any{"self": os.Getenv("LANES_AGENT_ID")}
 	usage := map[string]string{"agents": "lanes agents [--project NAME]", "start": "lanes start <TICKET> [instructions…]",
-		"send": "lanes send <agent> <text…>", "read": "lanes read <agent>", "wait": "lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]"}
+		"send": "lanes send <agent> <text…>", "read": "lanes read <agent>", "wait": "lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]",
+		"approve": "lanes approve <agent> <request…>", "deny": "lanes deny <agent> <request> [message…]", "stop": "lanes stop <agent>"}
 	bad := false
 	switch cmd {
 	case "agents":
@@ -275,7 +279,22 @@ func controlCommand(cmd string, args []string) error {
 	case "start":
 		bad = len(rest) < 1
 		if !bad {
-			req["ticket"], req["text"] = rest[0], strings.Join(rest[1:], " ")
+			req["ticket"], req["text"], req["repo"] = rest[0], strings.Join(rest[1:], " "), *repo
+		}
+	case "approve":
+		bad = len(rest) < 2
+		if !bad {
+			req["agent"], req["request"] = rest[0], strings.Join(rest[1:], " ")
+		}
+	case "deny":
+		bad = len(rest) < 2
+		if !bad {
+			req["agent"], req["request"], req["message"] = rest[0], rest[1], strings.Join(rest[2:], " ")
+		}
+	case "stop":
+		bad = len(rest) != 1
+		if !bad {
+			req["agent"] = rest[0]
 		}
 	case "send":
 		bad = len(rest) < 2
@@ -288,7 +307,7 @@ func controlCommand(cmd string, args []string) error {
 			req["agent"] = rest[0]
 		}
 	case "wait":
-		req["only"], req["timeout"], req["self"] = rest, timeout.Seconds(), os.Getenv("LANES_AGENT_ID")
+		req["only"], req["timeout"] = rest, timeout.Seconds()
 		if *after >= 0 {
 			req["after"] = *after
 		}

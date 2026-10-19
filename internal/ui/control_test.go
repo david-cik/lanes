@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,8 +13,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/david-cik/lanes/internal/agent"
+	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/hook"
 	"github.com/david-cik/lanes/internal/state"
+	"github.com/david-cik/lanes/internal/tracker"
 )
 
 // ctl sends control request op with args and returns where its answer lands (nil
@@ -193,8 +196,8 @@ func TestCoordinatorStartsOncePerProject(t *testing.T) {
 	_, cmd := m.Update(key("y"))
 	m.Update(cmd()) // launchedMsg
 	argv := strings.Join(ft.argv, "\n")
-	if !strings.Contains(argv, "--allowedTools=mcp__lanes__agents,mcp__lanes__start,mcp__lanes__send,mcp__lanes__read,mcp__lanes__wait") ||
-		!strings.Contains(argv, `--mcp-config={"mcpServers":{"lanes":{"args":["mcp"],"command":"lanes","type":"stdio"}}}`) ||
+	if !strings.Contains(argv, "--allowedTools=mcp__lanes__agents,mcp__lanes__send,mcp__lanes__read,mcp__lanes__wait,mcp__lanes__deny") ||
+		!strings.Contains(argv, "--permission-mode=manual") || !strings.Contains(argv, `--mcp-config={"mcpServers":{"lanes":{"args":["mcp"],"command":"lanes","type":"stdio"}}}`) ||
 		!strings.Contains(argv, `calling agents for "Apollo"`) || !strings.Contains(argv, "coordinator · Apollo") {
 		t.Fatalf("argv:\n%s", argv)
 	}
@@ -235,5 +238,129 @@ func TestControlSendRefusedWhileAPromptIsOpen(t *testing.T) {
 	got, _ = ctl(m, 2, "send", `{"agent":"r2","text":"go ahead"}`)
 	if e, _ := (*got)["error"].(string); !strings.Contains(e, "only the user can answer") {
 		t.Fatalf("trust prompt: %v", *got)
+	}
+}
+
+func TestCoordinatorToolsFollowConfig(t *testing.T) {
+	for _, c := range []struct{ start, approve, want string }{
+		{"auto", "auto", "mcp__lanes__agents,mcp__lanes__send,mcp__lanes__read,mcp__lanes__wait,mcp__lanes__start,mcp__lanes__deny,mcp__lanes__approve"},
+		{"panel", "off", "mcp__lanes__agents,mcp__lanes__send,mcp__lanes__read,mcp__lanes__wait,mcp__lanes__start\n"},
+	} {
+		m, ft, _ := hookModel(t)
+		m.opt.Config.LaunchDir = t.TempDir()
+		m.opt.Config.Coordinator = config.CoordinatorConfig{Start: c.start, Approve: c.approve}
+		m.issues[0].Project = "Apollo"
+		m.rebuild()
+		m.cursorTo(t, "ABC-1 fix it")
+		m.Update(key("C"))
+		_, cmd := m.Update(key("y"))
+		m.Update(cmd())
+		if argv := strings.Join(ft.argv, "\n") + "\n"; !strings.Contains(argv, "--allowedTools="+c.want) || !strings.Contains(argv, "--permission-mode=manual") {
+			t.Fatalf("%s/%s: %s", c.start, c.approve, argv)
+		}
+	}
+}
+
+// coordinated is hookModel with a running coordinator of project Apollo (record "c1").
+func coordinated(t *testing.T) (*Model, *fakeTmux) {
+	m, ft, _ := hookModel(t)
+	m.opt.Config.LaunchDir = t.TempDir()
+	m.opt.Tracker = detailTracker{&fakeTracker{}}
+	m.issues[0].Project = "Apollo"
+	m.live = append(m.live, state.Record{ID: "c1", Tool: "claude", TicketKey: state.NoTicket, Project: "Apollo", Pane: "%7"})
+	m.rebuild()
+	return m, ft
+}
+
+func TestCoordinatorStartsDirectly(t *testing.T) {
+	m, ft := coordinated(t)
+	shown := m.shown
+	got, cmd := ctl(m, 1, "start", `{"ticket":"ABC-1","text":"only DNS","self":"c1"}`)
+	if m.modal != nil {
+		t.Fatalf("asked in the panel: %+v", m.modal)
+	}
+	m.Update(cmd()) // launchedMsg
+	if (*got)["started"] != true || (*got)["agent"] == "" || (*got)["seq"] == nil || !strings.Contains(strings.Join(ft.argv, " "), "only DNS") {
+		t.Fatalf("%v %q", *got, ft.argv)
+	}
+	if m.shown != shown {
+		t.Fatalf("took the right pane: %q", m.shown)
+	}
+	m.opt.Config.Coordinator.Start = "panel"
+	m.cursor = 0
+	ctl(m, 2, "start", `{"ticket":"ABC-1","self":"c1"}`)
+	got, _ = ctl(m, 3, "start", `{"ticket":"ABC-1"}`) // not a coordinator: the panel asks
+	if (*got)["asked"] != true && !strings.Contains(fmt.Sprint(*got), "showing the user something else") {
+		t.Fatalf("%v", *got)
+	}
+}
+
+func TestControlApproveAndDeny(t *testing.T) {
+	m, _ := coordinated(t)
+	out := permission(m, 7, "r1")
+	got, _ := ctl(m, 1, "approve", `{"agent":"r1","request":"Bash: rm -rf /","self":"c1"}`)
+	if e, _ := (*got)["error"].(string); !strings.Contains(e, `waiting on "Bash: date > probe.txt"`) || len(*out) != 0 && (*out) != nil {
+		t.Fatalf("%v %q", *got, *out)
+	}
+	got, _ = ctl(m, 2, "approve", `{"agent":"r1","request":"Bash:  date > probe.txt","self":"c1"}`)
+	if (*got)["answered"] != "allow" || decisionOf(t, *out)["behavior"] != "allow" {
+		t.Fatalf("%v %s", *got, *out)
+	}
+	out = permission(m, 8, "r2")
+	got, _ = ctl(m, 3, "deny", `{"agent":"r2","request":"Bash: date > probe.txt","message":"not on this ticket","self":"c1"}`)
+	if d := decisionOf(t, *out); (*got)["answered"] != "deny" || d["behavior"] != "deny" || d["message"] != "not on this ticket" {
+		t.Fatalf("%v %v", *got, d)
+	}
+	out = permission(m, 10, "r1")
+	for _, self := range []string{"", "r2"} { // anything but a coordinator
+		got, _ = ctl(m, 5, "approve", `{"agent":"r1","request":"Bash: date > probe.txt","self":"`+self+`"}`)
+		if e, _ := (*got)["error"].(string); !strings.Contains(e, "only a project's coordinator") || *out != nil {
+			t.Fatalf("%q: %v %q", self, *got, *out)
+		}
+	}
+	m.opt.Config.Coordinator.Approve = "off"
+	permission(m, 9, "r1")
+	got, _ = ctl(m, 4, "approve", `{"agent":"r1","request":"Bash: date > probe.txt","self":"c1"}`)
+	if e, _ := (*got)["error"].(string); !strings.Contains(e, "is off") {
+		t.Fatalf("%v", *got)
+	}
+}
+
+func TestControlApprovesFolderTrust(t *testing.T) {
+	m, ft := coordinated(t)
+	m.Update(trustMsg{"r1", "%1"})
+	ft.screen = "Quick safety check\n ❯ No, exit\n   Yes, I trust this folder"
+	got, cmd := ctl(m, 1, "approve", `{"agent":"r1","request":"folder-trust prompt","self":"c1"}`)
+	runCmd(cmd)
+	if (*got)["answered"] != "trusted" || ft.log[len(ft.log)-1] != "keys %1 Down,Enter" {
+		t.Fatalf("%v %v", *got, ft.log)
+	}
+}
+
+func TestControlStop(t *testing.T) {
+	m, ft := coordinated(t)
+	delete(ft.sessions, "lanes-r1") // it exits when asked
+	got, cmd := ctl(m, 1, "stop", `{"agent":"r1"}`)
+	runCmd(cmd)
+	if (*got)["stopped"] != true || !strings.Contains(strings.Join(ft.log, "|"), "text %1 /exit") || !m.stopping["r1"] {
+		t.Fatalf("%v %v", *got, ft.log)
+	}
+	got, _ = ctl(m, 2, "stop", `{"agent":"claude:x9"}`)
+	if e, _ := (*got)["error"].(string); !strings.Contains(e, "not started by lanes") {
+		t.Fatalf("%v", *got)
+	}
+}
+
+func TestCoordinatorKeptToItsProject(t *testing.T) {
+	m, _ := coordinated(t)
+	m.issues = append(m.issues, tracker.Issue{Key: "ABC-2", Title: "other", Team: "Alpha", State: "Todo", StateType: "unstarted", Project: "Zeus"})
+	m.live = append(m.live, state.Record{ID: "r3", Tool: "claude", TicketKey: "ABC-2", Pane: "%3"})
+	m.Update(agentsMsg{agents: append(slices.Clone(m.agents), agent.Agent{ID: "s3", Tool: "claude", Name: "three", TicketKey: "ABC-2", RecordID: "r3", Pane: "%3"}), live: m.live})
+	permission(m, 7, "r3")
+	for _, op := range []string{"approve", "stop"} {
+		got, _ := ctl(m, 1, op, `{"agent":"r3","request":"Bash: date > probe.txt","self":"c1"}`)
+		if e, _ := (*got)["error"].(string); !strings.Contains(e, "the project you coordinate") {
+			t.Fatalf("%s: %v", op, *got)
+		}
 	}
 }

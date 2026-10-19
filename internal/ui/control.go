@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,7 +13,9 @@ import (
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/board"
+	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/hook"
+	"github.com/david-cik/lanes/internal/launch"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/suggest"
 	"github.com/david-cik/lanes/internal/tracker"
@@ -104,7 +107,10 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 		After   *int     `json:"after"`
 		Only    []string `json:"only"`
 		Timeout float64  `json:"timeout"` // seconds
-		Self    string   `json:"self"`
+		Self    string   `json:"self"`    // the caller's own agent id (LANES_AGENT_ID), if it's an agent
+		Request string   `json:"request"` // approve/deny: the request being answered, as agents/wait show it
+		Message string   `json:"message"` // deny: why, for the agent
+		Repo    string   `json:"repo"`    // start: the repo to work in (name or path)
 	}
 	if len(ev.Payload) > 0 && json.Unmarshal(ev.Payload, &args) != nil {
 		ctlError(ev, fmt.Errorf("bad arguments"))
@@ -115,7 +121,26 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 		tickets, unlinked := m.ctlBoard(args.Project)
 		ctlReply(ev, map[string]any{"tickets": tickets, "unlinked": unlinked, "seq": m.ctlSeq})
 	case "start":
+		if m.isCoordinator(args.Self) && m.opt.Config.Coordinator.Start != "panel" {
+			return m.startDirect(ev, args.Ticket, args.Text, args.Repo)
+		}
 		return m.ctlStart(ev, args.Ticket, args.Text)
+	case "approve", "deny":
+		if !m.isCoordinator(args.Self) { // what was only yours to answer goes no further
+			ctlError(ev, fmt.Errorf("only a project's coordinator can answer agents' prompts; the user answers them in the lanes panel"))
+			return nil
+		}
+		if err := m.inProject(args.Self, args.Agent); err != nil {
+			ctlError(ev, err)
+			return nil
+		}
+		return m.ctlAnswer(ev, args.Agent, args.Request, args.Message, ev.Control == "approve")
+	case "stop":
+		if err := m.inProject(args.Self, args.Agent); err != nil {
+			ctlError(ev, err)
+			return nil
+		}
+		return m.ctlStop(ev, args.Agent)
 	case "send":
 		a, err := m.ctlFind(args.Agent)
 		if err == nil && (a.recordID == "" || a.pane == "") {
@@ -287,7 +312,7 @@ func (m *Model) ctlAgentOf(a *agent.Agent) ctlAgent {
 	}
 	if st := m.hooks[c.ID]; st != nil {
 		c.Ready = st.ready
-		c.Waiting = strings.TrimPrefix(m.waitingNote(a), " · ")
+		c.Waiting = requestText(st)
 		for _, e := range st.activity[max(0, len(st.activity)-5):] {
 			c.Recent = append(c.Recent, e.at.Format("15:04")+" "+e.text)
 		}
@@ -356,4 +381,223 @@ func (m *Model) ctlStart(ev hook.Event, key, instructions string) tea.Cmd {
 	ctlReply(ev, map[string]any{"asked": true, "ticket": issue.Key,
 		"next": "the user confirms in the lanes panel; `lanes wait` reports a \"started\" event with the new agent's id"})
 	return tea.Batch(cmd, m.ping("an agent asks to start work on "+issue.Key+" — confirm in lanes"))
+}
+
+// requestText is what an agent is waiting on, as approve and deny expect it repeated.
+func requestText(st *hookState) string {
+	switch {
+	case st.pending != nil:
+		return strings.Join(strings.Fields(st.pending.req.Tool+": "+st.pending.req.Summary), " ")
+	case st.trust:
+		return trustRequest
+	}
+	return ""
+}
+
+const trustRequest = "folder-trust prompt"
+
+// ctlAnswer allows or denies what an agent is waiting on. request must repeat it (as
+// agents or wait showed it), so the caller's own permission prompt shows what is being
+// answered and an answer can't land on a request that replaced it.
+func (m *Model) ctlAnswer(ev hook.Event, ref, request, message string, allow bool) tea.Cmd {
+	if m.opt.Config.Coordinator.Approve == "off" {
+		ctlError(ev, fmt.Errorf("answering agents' prompts through lanes is off (coordinator.approve = \"off\"); the user answers them in the panel"))
+		return nil
+	}
+	a, err := m.ctlFind(ref)
+	if err != nil {
+		ctlError(ev, err)
+		return nil
+	}
+	st := m.hooks[a.ID]
+	want := ""
+	if st != nil {
+		want = requestText(st)
+	}
+	switch {
+	case want == "":
+		ctlError(ev, fmt.Errorf("%s isn't waiting on anything", a.Name))
+		return nil
+	case strings.Join(strings.Fields(request), " ") != want:
+		ctlError(ev, fmt.Errorf("%s is waiting on %q; pass that exactly as request", a.Name, want))
+		return nil
+	}
+	if st.pending != nil {
+		d := agent.Decision{Behavior: "deny", Message: message}
+		if allow {
+			d = agent.Decision{Behavior: "allow"}
+		}
+		m.decide(a.ID, st.pending, d)
+		st.log(m.now(), "answered through lanes by another agent")
+		ctlReply(ev, map[string]any{"answered": d.Behavior, "agent": a.ID})
+		return nil
+	}
+	// The folder-trust prompt: "No, exit" is highlighted, "Yes, I trust this folder" is next.
+	if !allow {
+		ctlError(ev, fmt.Errorf("to refuse the folder, stop the agent"))
+		return nil
+	}
+	if a.pane == "" || m.opt.Tmux == nil {
+		ctlError(ev, fmt.Errorf("%s's pane isn't reachable", a.Name))
+		return nil
+	}
+	tm, pane := m.opt.Tmux, a.pane
+	return func() tea.Msg {
+		screen, err := tm.Capture(pane)
+		if err == nil && !strings.Contains(screen, "Yes, I trust this folder") {
+			err = fmt.Errorf("the folder-trust prompt on screen isn't the one lanes knows; answer it in the pane")
+		}
+		if err == nil {
+			err = tm.SendKeys(pane, "Down", "Enter")
+		}
+		if err != nil {
+			ctlError(ev, err)
+		} else {
+			ctlReply(ev, map[string]any{"answered": "trusted", "agent": a.ID})
+		}
+		return nil
+	}
+}
+
+// ctlStop stops an agent lanes started, keeping its worktree.
+func (m *Model) ctlStop(ev hook.Event, ref string) tea.Cmd {
+	a, err := m.ctlFind(ref)
+	if err != nil {
+		ctlError(ev, err)
+		return nil
+	}
+	i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == a.recordID })
+	switch {
+	case i < 0 || m.opt.Tmux == nil:
+		ctlError(ev, fmt.Errorf("%s was not started by lanes, so it can't be stopped from here", a.Name))
+		return nil
+	case m.stopping[a.recordID]:
+		ctlError(ev, fmt.Errorf("%s is already stopping", a.Name))
+		return nil
+	}
+	rec, ad, tm, store := m.live[i], m.adapter(a.Tool), m.opt.Tmux, m.opt.Store
+	if m.shown == rec.ID {
+		if err := m.unshow(); err != nil {
+			m.say("", err)
+		}
+	}
+	m.stopping[rec.ID] = true
+	who := m.whoIs(rec.ID)
+	return func() tea.Msg {
+		err := stop(rec, ad, tm, store)
+		if err != nil {
+			ctlError(ev, err)
+		} else {
+			ctlReply(ev, map[string]any{"stopped": true, "agent": rec.ID})
+		}
+		return noticeMsg{"another agent stopped " + rec.Tool + " on " + who, err}
+	}
+}
+
+// startDirect starts an agent for a coordinator without the panel's start screen (its
+// own permission prompt asked the user, unless coordinator.start is "auto"): in the
+// launch folder if one is set, else a new worktree in the ticket's repo (or repo).
+func (m *Model) startDirect(ev hook.Event, key, instructions, repo string) tea.Cmd {
+	i := slices.IndexFunc(m.issues, func(i tracker.Issue) bool { return strings.EqualFold(i.Key, strings.TrimSpace(key)) })
+	ad := m.adapter(m.opt.Config.DefaultAgent)
+	switch {
+	case i < 0:
+		ctlError(ev, fmt.Errorf("%s isn't on the board (agents lists the tickets)", key))
+		return nil
+	case m.opt.Tmux == nil:
+		ctlError(ev, fmt.Errorf("lanes isn't running inside tmux"))
+		return nil
+	case ad == nil:
+		ctlError(ev, fmt.Errorf("default_agent %q isn't set up", m.opt.Config.DefaultAgent))
+		return nil
+	}
+	issue, cfg := m.issues[i], m.opt.Config
+	sib, _ := m.siblings(issue.Key)
+	live, tr, tm, store := slices.Clone(m.live), m.opt.Tracker, m.opt.Tmux, m.opt.Store
+	hookBin, socket := "", ""
+	if _, ok := ad.(agent.Hooker); ok {
+		hookBin, socket = m.opt.HookBin, m.opt.Socket
+	}
+	var claim tea.Cmd
+	if claimer, ok := tr.(tracker.Claimer); ok && issue.Pool {
+		team, order := issue.Team, m.stateOrder()[issue.Team]
+		claim = func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			st, err := claimer.Claim(ctx, issue.Key, team, order)
+			return claimedMsg{key: issue.Key, state: st, err: err}
+		}
+	}
+	m.say("another agent is starting "+ad.Name()+" on "+issue.Key+"…", nil)
+	return func() tea.Msg {
+		fail := func(err error) tea.Msg { return launchedMsg{err: err, ctl: ev} }
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		d, err := tr.Issue(ctx, issue.Key)
+		if err != nil {
+			return fail(err)
+		}
+		repos := launch.Repos(cfg.RepoRoots)
+		var p launch.Plan
+		switch {
+		case repo != "":
+			j := slices.IndexFunc(repos, func(r launch.Repo) bool { return r.Name == repo || r.Path == config.Expand(repo) })
+			if j < 0 {
+				return fail(fmt.Errorf("no repo %q under repo_roots; repos: %s", repo, repoNames(repos)))
+			}
+			p = launch.NewPlan(d, repos[j], ad, cfg)
+		case cfg.LaunchDir != "":
+			p = launch.FolderPlan(ctx, d, cfg.LaunchDir, ad, cfg)
+		default:
+			r, ok := launch.InferRepo(d, repos)
+			if !ok {
+				return fail(fmt.Errorf("which repo is %s in? pass repo, one of: %s", issue.Key, repoNames(repos)))
+			}
+			p = launch.NewPlan(d, r, ad, cfg)
+		}
+		p = p.WithSiblings(sib)
+		if instructions = strings.TrimSpace(instructions); instructions != "" {
+			p = p.WithInstructions(instructions)
+		}
+		p.HookBin, p.Socket = hookBin, socket
+		var warning string
+		if !p.InPlace || p.Branch != "" {
+			if warning, err = launch.Check(live, p.Worktree, d.Key); err != nil {
+				return fail(err)
+			}
+		}
+		rec, err := launch.Run(ctx, p, tm, store)
+		return launchedMsg{rec: rec, err: err, claim: claim, ctl: ev, warning: warning}
+	}
+}
+
+func repoNames(repos []launch.Repo) string {
+	var n []string
+	for _, r := range repos {
+		n = append(n, r.Name)
+	}
+	return strings.Join(n, ", ")
+}
+
+// isCoordinator says whether id is a running project coordinator lanes started.
+func (m *Model) isCoordinator(id string) bool {
+	return id != "" && slices.ContainsFunc(m.live, func(r state.Record) bool { return r.ID == id && r.Project != "" })
+}
+
+// inProject keeps a coordinator to its own project's agents. Other callers aren't held
+// to a project.
+func (m *Model) inProject(self, ref string) error {
+	i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == self && r.Project != "" })
+	if self == "" || i < 0 {
+		return nil
+	}
+	a, err := m.ctlFind(ref)
+	if err != nil {
+		return err
+	}
+	project := m.live[i].Project
+	if j := slices.IndexFunc(m.issues, func(i tracker.Issue) bool { return i.Key == a.Ticket }); j < 0 || m.issues[j].Project != project {
+		return fmt.Errorf("%s isn't on a ticket of %s, the project you coordinate", a.Name, project)
+	}
+	return nil
 }

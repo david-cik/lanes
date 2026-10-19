@@ -30,7 +30,7 @@ can talk to the running lanes panel to watch and steer the agents on the board.
 These need the lanes panel running (otherwise they fail with "no lanes panel is running";
 tell the user). They print JSON. Name an agent by its `id` from `lanes agents`, a prefix of
 it, or its ticket key when one agent is on that ticket. If the session has the lanes MCP
-tools (`agents`, `start`, `send`, `read`, `wait`), use those instead; they're the same.
+tools, use those instead; they're the same.
 
 - `lanes agents [--project NAME]` — tickets (key, title, state, project) with the agents on
   each: `status` (working, idle, waiting, ended), `ready` (finished a turn nobody looked
@@ -44,12 +44,15 @@ tools (`agents`, `start`, `send`, `read`, `wait`), use those instead; they're th
   finishes a turn (`ready`), needs the user (`needs_you`), or ends. Default timeout 90s
   (`"timeout": true` and no events). Pass back the `seq` from the previous answer as
   `--after` so nothing is missed; keep each call under your command time limit.
-- `lanes start <TICKET> [instructions…]` — ask the user to start an agent on a ticket. It
-  answers at once; the user decides in the panel, and `lanes wait` reports `started` with
-  the new agent's id if they say yes. Instructions are added to the agent's first prompt.
+- `lanes start [--repo R] <TICKET> [instructions…]` — ask the user to start an agent on a
+  ticket. It answers at once; the user decides in the panel, and `lanes wait` reports
+  `started` with the new agent's id if they say yes. Instructions are added to the agent's
+  first prompt.
+- `lanes stop <agent>` — stop an agent lanes started (its worktree is kept).
 
-Only `send` and `start` affect anything. Before using `send`, make sure the user wants that
-agent told that thing. Quote what you send, and what agents reply, when you report back.
+Agents' permission prompts are the user's (or a project coordinator's) to answer; tell
+the user about them. `send`, `start`, and `stop` change things: use them only for what the
+user asked. Quote what you send, and what agents reply, when you report back.
 
 To have a project looked after continuously, the user can press `C` on the project in the
 panel to start its coordinator, a session built for this.

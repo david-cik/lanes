@@ -13,6 +13,7 @@ import (
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/board"
 	"github.com/david-cik/lanes/internal/config"
+	"github.com/david-cik/lanes/internal/hook"
 	"github.com/david-cik/lanes/internal/launch"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tracker"
@@ -27,8 +28,10 @@ type (
 	launchedMsg struct {
 		rec     state.Record
 		err     error
-		resumed string  // ended session this resumed; its link is retired
-		claim   tea.Cmd // claims the ticket in Linear once the agent is running
+		resumed string     // ended session this resumed; its link is retired
+		claim   tea.Cmd    // claims the ticket in Linear once the agent is running
+		ctl     hook.Event // the control request that started it, answered once it runs
+		warning string     // said to that requester
 	}
 )
 
@@ -502,6 +505,7 @@ func (m *Model) isPool(key string) bool {
 
 func (m *Model) launched(msg launchedMsg) tea.Cmd {
 	if msg.err != nil {
+		ctlError(msg.ctl, msg.err)
 		m.say("", msg.err)
 		return nil
 	}
@@ -514,8 +518,17 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 			m.links = l
 		}
 	}
-	m.focus(msg.rec.ID, msg.rec.Pane)
+	if msg.ctl.Reply == nil { // one an agent started doesn't take the screen from what you're in
+		m.focus(msg.rec.ID, msg.rec.Pane)
+	}
 	m.event("started", msg.rec.ID, "")
+	if msg.ctl.Reply != nil { // seq: a wait after it hears what this agent does next
+		ans := map[string]any{"started": true, "agent": msg.rec.ID, "ticket": msg.rec.TicketKey, "folder": msg.rec.Worktree, "seq": m.ctlSeq}
+		if msg.warning != "" {
+			ans["warning"] = msg.warning
+		}
+		ctlReply(msg.ctl, ans)
+	}
 	if msg.rec.Project != "" {
 		m.say(fmt.Sprintf("started the coordinator of %s in %s", msg.rec.Project, home(msg.rec.Worktree)), nil)
 	} else {

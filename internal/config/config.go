@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -45,8 +46,19 @@ type Config struct {
 	DimInactive      bool     `toml:"dim_inactive"`     // fade the pane (board or agent) you're not in
 	FocusKey         string   `toml:"focus_key"`        // optional tmux key that jumps between board and agent ("" = use the tmux prefix + h/l or arrows)
 
-	Agents map[string]AgentConfig `toml:"agents"`
-	Teams  map[string]TeamConfig  `toml:"teams"`
+	Agents      map[string]AgentConfig `toml:"agents"`
+	Teams       map[string]TeamConfig  `toml:"teams"`
+	Coordinator CoordinatorConfig      `toml:"coordinator"`
+}
+
+// CoordinatorConfig is what a project's coordinator may do without the panel.
+type CoordinatorConfig struct {
+	// Start: "ask" (Claude asks you in the coordinator's pane before each start), "auto"
+	// (it starts agents without asking), "panel" (you confirm each start in the panel).
+	Start string `toml:"start"`
+	// Approve: "ask" (each allow of an agent's prompt asks you in the coordinator's
+	// pane), "auto" (it answers agents' prompts itself), "off" (it can't answer them).
+	Approve string `toml:"approve"`
 }
 
 type AgentConfig struct {
@@ -82,6 +94,7 @@ func Default() Config {
 		EndedDays:        3,
 		GroupByProject:   true,
 		DimInactive:      true,
+		Coordinator:      CoordinatorConfig{Start: "ask", Approve: "ask"},
 	}
 }
 
@@ -121,6 +134,14 @@ func Load(path string) (Config, error) {
 	case "", "auto", "terminal", "system":
 	default:
 		return c, fmt.Errorf("%s: notify_via must be \"auto\", \"terminal\" or \"system\", got %q", path, c.NotifyVia)
+	}
+	for key, v := range map[string][2]string{
+		"coordinator.start":   {c.Coordinator.Start, "ask auto panel"},
+		"coordinator.approve": {c.Coordinator.Approve, "ask auto off"},
+	} {
+		if !slices.Contains(strings.Fields(v[1]), v[0]) {
+			return c, fmt.Errorf("%s: %s must be one of %s, got %q", path, key, strings.Join(strings.Fields(v[1]), ", "), v[0])
+		}
 	}
 	for i, r := range c.RepoRoots {
 		c.RepoRoots[i] = Expand(r)
