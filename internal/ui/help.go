@@ -79,7 +79,7 @@ var helpSections = []helpSection{
 	}},
 	{"Work", [][2]string{
 		{"@start", "start an agent on the ticket"},
-		{"@new_ticket", "new ticket, drafted by Claude (from a session too)"},
+		{"@new_ticket", "new ticket, drafted by an agent (from a session too)"},
 		{"@send", "send text to the agent"},
 		{"@approve", "answer a waiting request"},
 		{"@stop", "stop the agent (worktree is kept)"},
@@ -89,7 +89,7 @@ var helpSections = []helpSection{
 	{"Sessions on tickets", [][2]string{
 		{"@link", "move a session to a ticket, or take it off"},
 		{"@suggest", "suggest tickets for unlinked sessions"},
-		{"@ask", "ask Claude (\"find my old sessions\")"},
+		{"@ask", "ask an agent (\"find my old sessions\")"},
 	}},
 	{"Board", [][2]string{
 		{"enter", "on a team: fold it to one line"},
@@ -102,6 +102,7 @@ var helpSections = []helpSection{
 	{"Starting an agent (@start)", [][2]string{
 		{"y  enter", "start"},
 		{"f", "start in another folder"},
+		{"t", "use another tool (when more than one is installed)"},
 		{"w", "use a new git worktree instead"},
 		{"c", "up-for-grabs ticket: claim it, or not"},
 	}},

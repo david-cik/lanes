@@ -201,7 +201,7 @@ func TestApproveOldestWhenSelectionHasNone(t *testing.T) {
 func TestTrustPromptDetected(t *testing.T) {
 	m, ft, notes := hookModel(t)
 	ft.screen = "Quick safety check: Is this a project you created or one you trust?\n ❯ No, exit\n   Yes, I trust this folder"
-	msg := m.watchTrust("r1", "%1")()
+	msg := m.watchTrust("r1", "%1", claude.New())()
 	_, cmd := m.Update(msg)
 	ft.screen = "" // let the "prompt gone" watcher in cmd finish
 	runCmd(cmd)
@@ -217,9 +217,9 @@ func TestTrustPromptDetected(t *testing.T) {
 func TestTrustNoteClearsWhenPromptLeavesScreen(t *testing.T) {
 	m, ft, _ := hookModel(t)
 	ft.screen = "Yes, I trust this folder"
-	m.Update(m.watchTrust("r1", "%1")())
+	m.Update(m.watchTrust("r1", "%1", claude.New())())
 	ft.screen = "❯ " // answered; Claude sits idle, no hook fires
-	m.Update(m.watchTrustGone("r1", "%1")())
+	m.Update(m.watchTrustGone("r1", "%1", claude.New())())
 	if strings.Contains(view(m), "folder-trust") {
 		t.Fatal("trust note stuck after the prompt was answered")
 	}

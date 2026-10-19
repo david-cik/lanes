@@ -48,6 +48,40 @@ type LaunchSpec struct {
 // Forker is implemented by adapters that can fork an existing session into a new one.
 type Forker interface{ CanFork() bool }
 
+// The interfaces below are optional too: lanes checks for each before using what it
+// offers, so a tool with none of them can still be started, sent to, and stopped.
+
+// Asker is implemented by adapters whose tool can answer one question and exit, with no
+// tools and nothing saved (for the panel's ask and ticket drafting).
+type Asker interface {
+	Ask(ctx context.Context, system, prompt string) (string, error)
+}
+
+// MCPServer is a stdio MCP server to give one session.
+type MCPServer struct {
+	Name    string
+	Command string
+	Args    []string
+}
+
+// Coordinates is implemented by adapters whose tool can run a project's coordinator: it
+// returns the extra arguments that give one session srv, let it use srv's tools named
+// in allowed without asking, and make every other tool ask first, whatever mode the
+// user's own settings default to.
+type Coordinates interface {
+	CoordinatorArgs(srv MCPServer, allowed []string) []string
+}
+
+// Truster is implemented by adapters whose tool asks before working in a folder it
+// hasn't seen.
+type Truster interface {
+	// TrustPrompt says whether screen (a capture of its pane) shows that question.
+	TrustPrompt(screen string) bool
+	// TrustKeys are the keys that answer it with yes, if screen shows the version of the
+	// prompt they're for; ok is false otherwise.
+	TrustKeys(screen string) (keys []string, ok bool)
+}
+
 // Command is how to run a tool in a tmux pane.
 type Command struct {
 	Argv      []string

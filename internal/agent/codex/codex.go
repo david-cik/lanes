@@ -29,5 +29,4 @@ func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
 	return agent.Command{Argv: argv}
 }
 
-// ponytail: unverified until codex is installed; Ctrl-C twice is the documented quit.
-func (*Adapter) Stop() (string, []string) { return "", []string{"C-c", "C-c"} }
+func (*Adapter) Stop() (string, []string) { return "/quit", nil }

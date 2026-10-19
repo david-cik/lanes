@@ -14,8 +14,11 @@ import (
 )
 
 type (
-	hookMsg      hook.Event
-	trustMsg     struct{ id, pane string }
+	hookMsg  hook.Event
+	trustMsg struct {
+		id, pane string
+		t        agent.Truster
+	}
 	trustGoneMsg struct{ id string }
 )
 
@@ -468,10 +471,10 @@ func (m *Model) decide(id string, p *pending, d agent.Decision) tea.Cmd {
 
 // --- folder trust ---
 
-// watchTrust looks at a newly launched agent's pane for Claude's folder-trust prompt.
-func (m *Model) watchTrust(id, pane string) tea.Cmd {
+// watchTrust looks at a newly launched agent's pane for its tool's folder-trust prompt.
+func (m *Model) watchTrust(id, pane string, t agent.Truster) tea.Cmd {
 	tm := m.opt.Tmux
-	if tm == nil {
+	if tm == nil || t == nil {
 		return nil
 	}
 	return func() tea.Msg {
@@ -480,18 +483,13 @@ func (m *Model) watchTrust(id, pane string) tea.Cmd {
 			if err != nil {
 				return nil
 			}
-			if trustPrompt(out) {
-				return trustMsg{id, pane}
+			if t.TrustPrompt(out) {
+				return trustMsg{id, pane, t}
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
 		return nil
 	}
-}
-
-func trustPrompt(screen string) bool {
-	s := strings.ToLower(screen)
-	return strings.Contains(s, "trust this folder") || strings.Contains(s, "do you trust the files")
 }
 
 func (m *Model) trusted(msg trustMsg) tea.Cmd {
@@ -506,18 +504,18 @@ func (m *Model) trusted(msg trustMsg) tea.Cmd {
 	st.trust = true
 	m.event("needs_you", msg.id, "folder-trust prompt")
 	m.rebuild()
-	m.say("Claude asks whether to trust this new worktree — answer in the right pane (option 2 trusts it)", nil)
-	return tea.Batch(m.notify(msg.id, "folder-trust prompt"), m.watchTrustGone(msg.id, msg.pane))
+	m.say(m.whoIs(msg.id)+" asks whether to trust this new folder — answer in its pane", nil)
+	return tea.Batch(m.notify(msg.id, "folder-trust prompt"), m.watchTrustGone(msg.id, msg.pane, msg.t))
 }
 
 // watchTrustGone clears the trust note once the prompt leaves the screen, even if the
 // agent then sits idle and no hook fires.
-func (m *Model) watchTrustGone(id, pane string) tea.Cmd {
+func (m *Model) watchTrustGone(id, pane string, t agent.Truster) tea.Cmd {
 	tm := m.opt.Tmux
 	return func() tea.Msg {
 		for {
 			out, err := tm.Capture(pane)
-			if err != nil || !trustPrompt(out) {
+			if err != nil || !t.TrustPrompt(out) {
 				return trustGoneMsg{id}
 			}
 			time.Sleep(time.Second)

@@ -258,7 +258,7 @@ func (m *Model) agentSegs(r board.Row, last bool, cont string) []seg {
 	case a.External && !a.Ended:
 		out = append(out, s("  external", italicF))
 	}
-	if a.Tool != "claude" {
+	if a.Tool != m.opt.Config.DefaultAgent {
 		out = append(out, s("  "+a.Tool, faint))
 	}
 	return out

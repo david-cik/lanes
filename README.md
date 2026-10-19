@@ -8,7 +8,7 @@ start an agent on a ticket — yours, or an unassigned one from your team — in
 its own git worktree, watch it, send it a message, approve its permission prompts, check
 its branch and pull request, and stop it. Sessions you started elsewhere show up too:
 put them on tickets yourself, let lanes suggest tickets from their transcripts, or ask
-Claude in plain words ("find my old sessions for this ticket").
+an agent in plain words ("find my old sessions for this ticket").
 
 ```
  ● board ───────────────────────────────────┬─ ○ agent · ✳ ABC-12 fix-login ──
@@ -29,7 +29,9 @@ Claude in plain words ("find my old sessions for this ticket").
 
 - macOS or Linux
 - [tmux](https://github.com/tmux/tmux) 3.3 or newer (lanes runs inside it)
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) for agents
+- An agent CLI: [Claude Code](https://docs.claude.com/en/docs/claude-code) has the most
+  built-in support today; Codex is built in too, and any other CLI can be added in the
+  config (see [Other agent tools](#other-agent-tools))
 - [GitHub CLI](https://cli.github.com) (`gh`, signed in) for pull request details — optional
 - Go (latest) to install
 
@@ -138,7 +140,8 @@ and is removed when lanes quits. A binding you already have for that key is left
 
 ### Starting an agent (`n`)
 
-The start screen shows where the agent will run: `y`/`enter` starts it, `f` picks another
+The start screen shows where the agent will run and with which tool (`default_agent`;
+`t` picks another installed one): `y`/`enter` starts it, `f` picks another
 folder (your launch folder, any repo as it is, or a path you type), and `w` switches to a
 fresh git worktree for the ticket.
 
@@ -337,10 +340,13 @@ preamble = ""                 # standing instructions, e.g. "Run the tests befor
 [agents.claude]
 args = []                     # extra arguments, e.g. ["--model", "sonnet"]
 
+ask_agent = ""                # the tool that answers : and drafts N tickets ("" = default_agent if it can)
+
 [keys]                        # board keys you changed (lanes keys writes this; --reset removes it)
 start = "n"                   # one character each; names as in `lanes keys`, e.g. send, stop, approve, quit
 
 [coordinator]                 # what a project's coordinator (C) may do; see "A project's coordinator"
+agent = ""                    # the tool it runs in ("" = default_agent if it can)
 start = "ask"                 # "ask" (in its pane), "auto", or "panel"
 approve = "ask"               # answering agents' prompts: "ask" (each allow, in its pane), "auto", or "off"
 
@@ -351,6 +357,26 @@ state_order = ["Backlog", "Todo", "In Progress", "In Review"]   # started one is
 State lives in `~/.local/state/lanes/` (or `$XDG_STATE_HOME/lanes/`): launched agents,
 manual links, and the panel's socket. Edit links with `t`, `T`, `:` or `lanes link`, not by
 hand.
+
+## Other agent tools
+
+lanes starts, watches, and stops agents through a small adapter per tool. Claude Code has
+the most built in (live status, answering prompts, sessions lanes didn't start, transcripts,
+`:` and `N`, coordinators); each feature checks what the tool can do, and `default_agent`,
+`ask_agent`, and `coordinator.agent` pick which tool does what.
+
+Any other CLI works from the config, with no code: lanes can start it on a ticket, show it,
+send it text, and stop it.
+
+```toml
+[agents.aider]
+command = ["aider"]           # how to run it; lanes adds the first prompt last
+prompt_flag = "--message"     # put this before the prompt ("" = the prompt alone)
+stop = "/exit"                # typed to make it exit (else stop_keys, e.g. ["C-c", "C-c"])
+```
+
+Tools that aren't installed are left out. With more than one installed, the start screen's
+`t` picks which one an agent runs in.
 
 ## What lanes never does
 

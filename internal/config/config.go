@@ -48,12 +48,15 @@ type Config struct {
 
 	Agents      map[string]AgentConfig `toml:"agents"`
 	Teams       map[string]TeamConfig  `toml:"teams"`
+	AskAgent    string                 `toml:"ask_agent"` // the tool that answers : and drafts N tickets; "" = the default agent if it can
 	Coordinator CoordinatorConfig      `toml:"coordinator"`
 	Keys        map[string]string      `toml:"keys"` // board action → key; see KeyActions
 }
 
 // CoordinatorConfig is what a project's coordinator may do without the panel.
 type CoordinatorConfig struct {
+	// Agent is the tool coordinators run in; "" = the default agent if it can.
+	Agent string `toml:"agent"`
 	// Start: "ask" (Claude asks you in the coordinator's pane before each start), "auto"
 	// (it starts agents without asking), "panel" (you confirm each start in the panel).
 	Start string `toml:"start"`
@@ -64,6 +67,15 @@ type CoordinatorConfig struct {
 
 type AgentConfig struct {
 	Args []string `toml:"args"`
+	// For a tool lanes has no built-in support for: how to run it ([agents.<name>] with
+	// command set adds it). The first prompt goes last on the command line, after
+	// prompt_flag if set; stop is typed (then Enter) to make it exit, else stop_keys
+	// (tmux key names) are pressed; waiting is text its pane shows when it needs you.
+	Command    []string `toml:"command"`
+	PromptFlag string   `toml:"prompt_flag"`
+	Stop       string   `toml:"stop"`
+	StopKeys   []string `toml:"stop_keys"`
+	Waiting    []string `toml:"waiting"`
 }
 
 type TeamConfig struct {

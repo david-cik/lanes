@@ -75,7 +75,6 @@ func defaultReaders() Readers {
 		PR: func(ctx context.Context, dir, branch string) (*gh.PR, error) {
 			return gh.Find(ctx, gh.Exec, dir, branch)
 		},
-		Ask: claudeAsk("sonnet"),
 		Open: func(url string) error {
 			if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
 				return fmt.Errorf("not opening %q: not a web address", url)

@@ -3,7 +3,6 @@ package ui
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,7 +20,7 @@ import (
 	"github.com/david-cik/lanes/internal/tracker"
 )
 
-// A project's coordinator is a Claude session on no ticket that looks after the
+// A project's coordinator is an agent session on no ticket that looks after the
 // project's tickets and agents through the lanes MCP tools (`lanes mcp`, which makes
 // the control requests in control.go). There is at most one per project.
 
@@ -43,12 +42,6 @@ func coordinatorPrompt(project string, cc config.CoordinatorConfig) string {
 Use the lanes tools (agents, start, send, read, wait, approve, deny, stop). Call agents with project "{project}" to see its tickets and the agents on each. {start} Name an agent by its id from agents, or by its ticket. Loop on wait while agents work, passing as after the seq from your last agents, start, or wait answer; an agent's waiting field in agents shows a prompt that was already open before you began waiting. read an agent when it's ready. {answer} When starting agents on related tickets, tell each one which parts the others own. stop ends an agent (its worktree is kept); only stop one the user wants stopped.
 
 Start by calling agents for "{project}", summarise where the project stands in a few lines, and ask the user what they want done.`)
-}
-
-// mcpConfig is the --mcp-config that gives an agent the lanes tools (`bin mcp`).
-func mcpConfig(bin string) string {
-	b, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"lanes": map[string]any{"type": "stdio", "command": bin, "args": []string{"mcp"}}}})
-	return string(b)
 }
 
 // selectedProject is the project of the row under the cursor: a project heading, a
@@ -86,12 +79,13 @@ func (m *Model) startCoordinator() tea.Cmd {
 		m.say(project+" already has its coordinator", nil)
 		return nil
 	}
-	a := m.adapter("claude")
-	if _, ok := a.(agent.Hooker); !ok || a.Name() != "claude" {
-		m.say("", fmt.Errorf("a coordinator runs in Claude Code, which isn't set up as an agent"))
+	cc := m.opt.Config.Coordinator
+	a := m.pick(cc.Agent, func(a agent.Adapter) bool { _, ok := a.(agent.Coordinates); return ok })
+	if a == nil {
+		m.say("", fmt.Errorf("no installed agent can run a coordinator%s", named(cc.Agent, "coordinator.agent")))
 		return nil
 	}
-	// Where it runs barely matters (it changes nothing), but Claude asks before working
+	// Where it runs barely matters (it changes nothing), but tools ask before working
 	// in a folder it hasn't been told to trust: the launch folder or a repo root, which
 	// agents already run in, are likelier to be trusted than home.
 	dir, _ := os.UserHomeDir()
@@ -102,8 +96,7 @@ func (m *Model) startCoordinator() tea.Cmd {
 		}
 	}
 	bin := cmp.Or(m.opt.HookBin, "lanes")
-	// What it may do without Claude asking you first; stop always asks.
-	cc := m.opt.Config.Coordinator
+	// What it may do without its tool asking you first; stop always asks.
 	tools := []string{"agents", "send", "read", "wait"}
 	if cc.Start == "auto" || cc.Start == "panel" { // "panel": the panel asks
 		tools = append(tools, "start")
@@ -114,21 +107,16 @@ func (m *Model) startCoordinator() tea.Cmd {
 	if cc.Approve == "auto" {
 		tools = append(tools, "approve")
 	}
-	var rules []string
-	for _, c := range tools {
-		rules = append(rules, "mcp__lanes__"+c)
-	}
-	// "manual" is Claude's ask-every-time mode: in auto or bypass mode (a default in your
-	// settings), Claude might run a tool left off the list above without asking you.
-	mode := []string{"--permission-mode=manual"}
 	p := launch.Plan{
 		Ticket: tracker.IssueDetail{Issue: tracker.Issue{Key: state.NoTicket}}, Repo: launch.Repo{Name: filepath.Base(dir), Path: dir},
 		Adapter: a, Worktree: dir, InPlace: true, Name: "coordinator · " + project, Project: project,
-		// "=" keeps these variadic flags from taking the prompt after them as a value.
 		Args: append(slices.Clone(m.opt.Config.Agents[a.Name()].Args),
-			append(mode, "--mcp-config="+mcpConfig(bin), "--allowedTools="+strings.Join(rules, ","))...),
-		Prompt:  coordinatorPrompt(project, cc),
-		HookBin: m.opt.HookBin, Socket: m.opt.Socket,
+			a.(agent.Coordinates).CoordinatorArgs(agent.MCPServer{Name: "lanes", Command: bin, Args: []string{"mcp"}}, tools)...),
+		Prompt: coordinatorPrompt(project, cc),
+		Socket: m.opt.Socket,
+	}
+	if _, ok := a.(agent.Hooker); ok {
+		p.HookBin = m.opt.HookBin
 	}
 	tm, store := m.opt.Tmux, m.opt.Store
 	start := func() (tea.Cmd, bool) {
@@ -142,15 +130,15 @@ func (m *Model) startCoordinator() tea.Cmd {
 	}
 	m.notice = ""
 	m.modal = &modal{title: "Start a coordinator for " + project + "?", lines: []string{
-		"tool:     claude",
+		"tool:     " + a.Name(),
 		"folder:   " + home(dir),
 		"",
 		"It watches the project's tickets and agents, and talks to the agents for you.",
-		"starting agents:   " + map[string]string{"ask": "Claude asks you in its pane first", "auto": "on its own",
+		"starting agents:   " + map[string]string{"ask": a.Name() + " asks you in its pane first", "auto": "on its own",
 			"panel": "you confirm each one here"}[cc.Start],
 		"agents' prompts:   " + map[string]string{"ask": "it can deny; each allow asks you in its pane",
 			"auto": "it allows or denies them itself", "off": "yours, in this panel"}[cc.Approve],
-		"stopping agents:   Claude asks you in its pane first",
+		"stopping agents:   " + a.Name() + " asks you in its pane first",
 		faint.Render("(coordinator.start / coordinator.approve in the config)"),
 	}, actions: []action{{"y", "start", start}, {"enter", "start", start}}}
 	return nil

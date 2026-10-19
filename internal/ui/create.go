@@ -64,21 +64,21 @@ func (m *Model) startDraft(cr tracker.Creator, team, project string, from *agent
 	t := ticketDraft{cr: cr, team: team, project: project, from: from}
 	if from != nil {
 		t.session, t.name = from.ID, from.Name
-		m.say("Claude is drafting a ticket from "+from.Name+"…", nil)
+		m.say(m.askName()+" is drafting a ticket from "+from.Name+"…", nil)
 		return m.draft(t)
 	}
 	where := "assigned to you · Todo"
 	if project != "" {
 		where = "in project " + project + " · " + where
 	}
-	m.modal = &modal{input: true, title: "New " + team + " ticket — what's it about? (Claude drafts it)",
+	m.modal = &modal{input: true, title: "New " + team + " ticket — what's it about? (" + m.askName() + " drafts it)",
 		lines: []string{faint.Render(where)},
 		onInput: func(words string) tea.Cmd {
 			if strings.TrimSpace(words) == "" {
 				return nil
 			}
 			t.words = words
-			m.say("Claude is drafting the ticket…", nil)
+			m.say(m.askName()+" is drafting the ticket…", nil)
 			return m.draft(t)
 		}}
 	return nil
@@ -140,7 +140,7 @@ func (m *Model) draft(t ticketDraft) tea.Cmd {
 		}
 		var r struct{ Title, Description, Duplicate, Reason string }
 		if json.Unmarshal([]byte(jsonObj.FindString(out)), &r) != nil || (r.Title == "" && r.Duplicate == "") {
-			t.err = fmt.Errorf("Claude's draft wasn't understood: %s", firstLine(out))
+			t.err = fmt.Errorf("the draft wasn't understood: %s", firstLine(out))
 			return draftMsg{t}
 		}
 		t.title, t.description = strings.Join(strings.Fields(r.Title), " "), strings.TrimSpace(r.Description)
@@ -159,7 +159,7 @@ func (m *Model) gotDraft(t ticketDraft) tea.Cmd {
 	case t.duplicate != "" && slices.ContainsFunc(m.issues, func(i tracker.Issue) bool { return i.Key == t.duplicate }):
 		acts := []action{{"c", "create a new ticket anyway", func() (tea.Cmd, bool) {
 			t.duplicate, t.anyway = "", true // same words or session, no duplicate check
-			m.say("Claude is drafting the ticket…", nil)
+			m.say(m.askName()+" is drafting the ticket…", nil)
 			return m.draft(t), false
 		}}}
 		if t.session != "" {
@@ -174,7 +174,7 @@ func (m *Model) gotDraft(t ticketDraft) tea.Cmd {
 		m.modal = &modal{title: t.duplicate + " may already cover this", lines: []string{clean(t.dupReason), ""}, actions: acts}
 		return nil
 	case t.title == "": // a "duplicate" that isn't on the board, and no draft
-		m.say("", fmt.Errorf("Claude didn't draft a ticket — type it yourself"))
+		m.say("", fmt.Errorf("no ticket was drafted — type it yourself"))
 		m.askTitle(t.cr, t.team, t.project)
 		return nil
 	}

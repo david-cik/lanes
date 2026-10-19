@@ -25,6 +25,7 @@ import (
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/agent/claude"
 	"github.com/david-cik/lanes/internal/agent/codex"
+	"github.com/david-cik/lanes/internal/agent/generic"
 	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/fleet"
 	"github.com/david-cik/lanes/internal/hook"
@@ -173,12 +174,7 @@ flags:
 	stop()
 
 	store := state.Store{Dir: stateDir}
-	var adapters []agent.Adapter
-	for _, a := range []agent.Adapter{claude.New(), codex.New()} {
-		if _, err := exec.LookPath(a.Name()); err == nil { // only tools that are installed
-			adapters = append(adapters, a)
-		}
-	}
+	adapters := installedAdapters(cfg)
 	opt := ui.Options{
 		Tracker: tr, Adapters: adapters, Store: store, Config: cfg,
 		Fleet:    fleet.Fleet{Adapters: adapters, Store: store, Tmux: tm, NoPrune: panel == ""},
@@ -674,4 +670,35 @@ func execInTmux(tm tmux.Client) error {
 		argv = []string{"tmux", "attach-session", "-t", "=" + tmuxSession}
 	}
 	return syscall.Exec(bin, argv, os.Environ())
+}
+
+// installedAdapters is every agent tool lanes can use here: the built-in ones, then any
+// [agents.<name>] with a command, each only if its program is installed.
+func installedAdapters(cfg config.Config) []agent.Adapter {
+	all := []agent.Adapter{claude.New(), codex.New()}
+	builtin := map[string]bool{}
+	for _, a := range all {
+		builtin[a.Name()] = true
+	}
+	var names []string
+	for name, ac := range cfg.Agents {
+		if len(ac.Command) > 0 && !builtin[name] {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		all = append(all, generic.New(name, cfg.Agents[name]))
+	}
+	var out []agent.Adapter
+	for _, a := range all {
+		bin := a.Name()
+		if g, ok := a.(*generic.Adapter); ok {
+			bin = g.Binary()
+		}
+		if _, err := exec.LookPath(config.Expand(bin)); err == nil {
+			out = append(out, a)
+		}
+	}
+	return out
 }

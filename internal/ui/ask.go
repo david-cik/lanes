@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,7 +13,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/david-cik/lanes/internal/agent"
-	"github.com/david-cik/lanes/internal/agent/claude"
 	"github.com/david-cik/lanes/internal/sessions"
 	"github.com/david-cik/lanes/internal/state"
 )
@@ -62,17 +59,17 @@ type askTurn struct {
 // back, or answers) and you confirm any change. The ticket under the cursor goes along.
 func (m *Model) ask() tea.Cmd {
 	var sel *askTicket
-	title := "Ask Claude — e.g. \"attach my CSP rollout session to ABC-12\""
+	title := "Ask " + m.askName() + " — e.g. \"attach my CSP rollout session to ABC-12\""
 	if i, ok := m.selectedIssue(); ok {
 		sel = &askTicket{i.Key, i.Title, i.State}
-		title = "Ask Claude about " + i.Key + " — e.g. \"find my old sessions for this ticket\""
+		title = "Ask " + m.askName() + " about " + i.Key + " — e.g. \"find my old sessions for this ticket\""
 	}
 	m.modal = &modal{input: true, title: title,
 		onInput: func(text string) tea.Cmd {
 			if strings.TrimSpace(text) == "" {
 				return nil
 			}
-			m.say("asking Claude…", nil)
+			m.say("asking "+m.askName()+"…", nil)
 			return m.askClaude(text, nil, sel)
 		}}
 	return nil
@@ -154,7 +151,7 @@ func parseAsk(out string) askMsg {
 		Question, Answer        string
 	}
 	if err := json.Unmarshal([]byte(jsonObj.FindString(out)), &r); err != nil {
-		return askMsg{err: fmt.Errorf("Claude's answer wasn't understood: %s", firstLine(out))}
+		return askMsg{err: fmt.Errorf("the answer wasn't understood: %s", firstLine(out))}
 	}
 	if r.Session != "" {
 		r.Links = append(r.Links, askLink{r.Session, r.Ticket, r.Reason})
@@ -171,21 +168,21 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 	case msg.question != "":
 		lines := []string{faint.Render("you: " + msg.request)}
 		for _, t := range msg.convo {
-			lines = append(lines, faint.Render("Claude: "+t.Asked), faint.Render("you: "+t.Answered))
+			lines = append(lines, faint.Render(m.askName()+": "+t.Asked), faint.Render("you: "+t.Answered))
 		}
-		m.modal = &modal{input: true, title: "Claude asks: " + msg.question, lines: append(lines, ""),
+		m.modal = &modal{input: true, title: m.askName() + " asks: " + msg.question, lines: append(lines, ""),
 			hint: "enter answer · esc stop",
 			onInput: func(answer string) tea.Cmd {
 				if strings.TrimSpace(answer) == "" {
 					return nil
 				}
-				m.say("asking Claude…", nil)
+				m.say("asking "+m.askName()+"…", nil)
 				return m.askClaude(msg.request, append(slices.Clone(msg.convo), askTurn{msg.question, answer}), msg.selected)
 			}}
 		return nil
 	case msg.answer != "" && len(msg.links) == 0:
 		closeIt := func() (tea.Cmd, bool) { return nil, false }
-		m.modal = &modal{title: "Claude", lines: []string{faint.Render("you: " + msg.request), "", msg.answer, ""},
+		m.modal = &modal{title: m.askName(), lines: []string{faint.Render("you: " + msg.request), "", msg.answer, ""},
 			actions: []action{{"enter", "close", closeIt}}}
 		return nil
 	}
@@ -216,13 +213,13 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 	}
 	switch {
 	case len(todo) == 0 && already > 0:
-		m.say(fmt.Sprintf("nothing to change: the %d session(s) Claude found are already there", already), nil)
+		m.say(fmt.Sprintf("nothing to change: the %d session(s) it found are already there", already), nil)
 		return nil
 	case len(todo) == 0 && len(skipped) > 0:
-		m.say("", fmt.Errorf("Claude named session %q, which isn't one of your recent sessions", skipped[0]))
+		m.say("", fmt.Errorf("the answer named session %q, which isn't one of your recent sessions", skipped[0]))
 		return nil
 	case len(todo) == 0:
-		m.say("", fmt.Errorf("Claude didn't name a session and a ticket"))
+		m.say("", fmt.Errorf("the answer didn't name a session and a ticket"))
 		return nil
 	}
 	verb := func(c change) string {
@@ -243,7 +240,7 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 		}
 	}
 	if already > 0 {
-		lines = append(lines, "", faint.Render(fmt.Sprintf("(%d more already where Claude would put them)", already)))
+		lines = append(lines, "", faint.Render(fmt.Sprintf("(%d more already where it would put them)", already)))
 	}
 	if len(skipped) > 0 {
 		lines = append(lines, faint.Render(fmt.Sprintf("(left out %d session(s) that aren't among your recent ones)", len(skipped))))
@@ -267,31 +264,20 @@ func (m *Model) gotAsk(msg askMsg) tea.Cmd {
 	return nil
 }
 
-// claudeAsk runs a one-shot Claude with no tools, no saved session, and none of the
-// user's settings (so no hooks fire), and returns its text answer.
-func claudeAsk(model string) func(ctx context.Context, system, prompt string) (string, error) {
-	return func(ctx context.Context, system, prompt string) (string, error) {
-		argv := []string{"-p", "--tools", "", "--no-session-persistence", "--setting-sources", "",
-			"--output-format", "json", "--system-prompt", system}
-		if model != "" {
-			argv = append(argv, "--model", model)
-		}
-		cmd := exec.CommandContext(ctx, "claude", append(argv, prompt)...)
-		cmd.Env = claude.CleanEnv(os.Environ())
-		out, err := cmd.Output()
-		if err != nil {
-			return "", fmt.Errorf("claude: %w", err)
-		}
-		var r struct {
-			Result  string `json:"result"`
-			IsError bool   `json:"is_error"`
-		}
-		if json.Unmarshal(out, &r) != nil {
-			return string(out), nil
-		}
-		if r.IsError {
-			return "", fmt.Errorf("claude: %s", firstLine(r.Result))
-		}
-		return r.Result, nil
+// askName names the tool that answers : and drafts tickets, for what the panel says.
+func (m *Model) askName() string {
+	if a := m.pick(m.opt.Config.AskAgent, func(a agent.Adapter) bool { _, ok := a.(agent.Asker); return ok }); a != nil {
+		return a.Name()
 	}
+	return "the agent"
+}
+
+// ask answers one question with the tool picked for it: ask_agent, else the default
+// agent, else any installed tool that can.
+func (m *Model) askAgent(ctx context.Context, system, prompt string) (string, error) {
+	a := m.pick(m.opt.Config.AskAgent, func(a agent.Adapter) bool { _, ok := a.(agent.Asker); return ok })
+	if a == nil {
+		return "", fmt.Errorf("no installed agent can answer questions here%s", named(m.opt.Config.AskAgent, "ask_agent"))
+	}
+	return a.(agent.Asker).Ask(ctx, system, prompt)
 }

@@ -511,7 +511,7 @@ func TestAskQuestionAndGarbage(t *testing.T) {
 	}
 	_, cmd = m.Update(key("enter"))
 	m.Update(cmd()) // Claude asks back
-	if m.modal == nil || !m.modal.input || m.modal.title != "Claude asks: which of the two CSP sessions?" {
+	if m.modal == nil || !m.modal.input || !strings.HasSuffix(m.modal.title, " asks: which of the two CSP sessions?") {
 		t.Fatalf("no answer prompt: %+v", m.modal)
 	}
 	for _, r := range "the rollout one" {

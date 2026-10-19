@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/david-cik/lanes/internal/agent"
+	"github.com/david-cik/lanes/internal/agent/claude"
 	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/hook"
 	"github.com/david-cik/lanes/internal/state"
@@ -234,7 +236,7 @@ func TestControlSendRefusedWhileAPromptIsOpen(t *testing.T) {
 	if e, _ := (*got)["error"].(string); !strings.Contains(e, "only the user can answer") || strings.Contains(strings.Join(ft.log, "|"), "go ahead") {
 		t.Fatalf("%v %v", *got, ft.log)
 	}
-	m.Update(trustMsg{"r2", "%2"})
+	m.Update(trustMsg{"r2", "%2", claude.New()})
 	got, _ = ctl(m, 2, "send", `{"agent":"r2","text":"go ahead"}`)
 	if e, _ := (*got)["error"].(string); !strings.Contains(e, "only the user can answer") {
 		t.Fatalf("trust prompt: %v", *got)
@@ -328,7 +330,7 @@ func TestControlApproveAndDeny(t *testing.T) {
 
 func TestControlApprovesFolderTrust(t *testing.T) {
 	m, ft := coordinated(t)
-	m.Update(trustMsg{"r1", "%1"})
+	m.Update(trustMsg{"r1", "%1", claude.New()})
 	ft.screen = "Quick safety check\n ❯ No, exit\n   Yes, I trust this folder"
 	got, cmd := ctl(m, 1, "approve", `{"agent":"r1","request":"folder-trust prompt","self":"c1"}`)
 	runCmd(cmd)
@@ -362,5 +364,50 @@ func TestCoordinatorKeptToItsProject(t *testing.T) {
 		if e, _ := (*got)["error"].(string); !strings.Contains(e, "the project you coordinate") {
 			t.Fatalf("%s: %v", op, *got)
 		}
+	}
+}
+
+// asker is an adapter that answers questions but can't coordinate.
+type asker struct{ stopper }
+
+func (asker) Name() string { return "asky" }
+func (asker) Ask(context.Context, string, string) (string, error) {
+	return `{"answer":"from asky"}`, nil
+}
+
+func TestToolsPickedByCapability(t *testing.T) {
+	m, _, _ := hookModel(t) // claude only
+	m.opt.Adapters = []agent.Adapter{stopper{}, asker{}}
+	if got := m.askName(); got != "asky" { // the default agent can't answer; the first that can does
+		t.Fatalf("ask tool %q", got)
+	}
+	m.opt.Config.AskAgent = "nope"
+	if _, err := m.askAgent(context.Background(), "", ""); err == nil || !strings.Contains(err.Error(), `ask_agent = "nope"`) {
+		t.Fatalf("%v", err)
+	}
+	m.issues[0].Project = "Apollo"
+	m.rebuild()
+	m.cursorTo(t, "ABC-1 fix it")
+	m.Update(key("C"))
+	if m.modal != nil || !strings.Contains(m.notice, "no installed agent can run a coordinator") {
+		t.Fatalf("modal %+v notice %q", m.modal, m.notice)
+	}
+}
+
+func TestStartWithAnotherTool(t *testing.T) {
+	m, _ := controlModel(t)
+	m.opt.Adapters = []agent.Adapter{stopper{}, asker{}}
+	m.opt.Config.DefaultAgent = "asky"
+	m.opt.Config.LaunchDir = t.TempDir()
+	m.opt.Tracker = detailTracker{&fakeTracker{}}
+	m.cursorTo(t, "ABC-1 fix it")
+	_, cmd := m.Update(key("n")) // straight to the default tool's start screen
+	feedLaunch(m, cmd)
+	if m.modal == nil || !strings.Contains(strings.Join(m.modal.lines, "\n"), "tool:     asky") {
+		t.Fatalf("%+v", m.modal)
+	}
+	m.Update(key("t"))
+	if m.modal == nil || len(m.modal.items) != 1 || m.modal.items[0].value != (stopper{}).Name() {
+		t.Fatalf("%+v", m.modal)
 	}
 }

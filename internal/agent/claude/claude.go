@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -115,6 +116,58 @@ func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
 func (*Adapter) Stop() (string, []string) { return "/exit", nil }
 
 func (*Adapter) CanFork() bool { return true }
+
+// Ask runs a one-shot Claude with no tools, no saved session, and none of the user's
+// settings (so no hooks fire), and returns its text answer.
+func (a *Adapter) Ask(ctx context.Context, system, prompt string) (string, error) {
+	argv := []string{"-p", "--tools", "", "--no-session-persistence", "--setting-sources", "",
+		"--output-format", "json", "--system-prompt", system, "--model", "sonnet", prompt}
+	cmd := exec.CommandContext(ctx, "claude", argv...)
+	cmd.Env = CleanEnv(os.Environ())
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("claude: %w", err)
+	}
+	var r struct {
+		Result  string `json:"result"`
+		IsError bool   `json:"is_error"`
+	}
+	if json.Unmarshal(out, &r) != nil {
+		return string(out), nil
+	}
+	if r.IsError {
+		line, _, _ := strings.Cut(strings.TrimSpace(r.Result), "\n")
+		return "", fmt.Errorf("claude: %s", line)
+	}
+	return r.Result, nil
+}
+
+// CoordinatorArgs gives the session srv (as --mcp-config) with the allowed tools
+// pre-allowed, in manual mode: an auto or bypass default in the user's settings could
+// otherwise run a tool left off the list without asking. "=" keeps these variadic flags
+// from taking the prompt after them as a value.
+func (*Adapter) CoordinatorArgs(srv agent.MCPServer, allowed []string) []string {
+	cfg, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{srv.Name: map[string]any{
+		"type": "stdio", "command": srv.Command, "args": srv.Args}}})
+	var rules []string
+	for _, t := range allowed {
+		rules = append(rules, "mcp__"+srv.Name+"__"+t)
+	}
+	return []string{"--permission-mode=manual", "--mcp-config=" + string(cfg), "--allowedTools=" + strings.Join(rules, ",")}
+}
+
+func (*Adapter) TrustPrompt(screen string) bool {
+	s := strings.ToLower(screen)
+	return strings.Contains(s, "trust this folder") || strings.Contains(s, "do you trust the files")
+}
+
+// TrustKeys: the dialog lists "❯ No, exit" first and "Yes, I trust this folder" second.
+func (*Adapter) TrustKeys(screen string) ([]string, bool) {
+	if !strings.Contains(screen, "Yes, I trust this folder") {
+		return nil, false
+	}
+	return []string{"Down", "Enter"}, true
+}
 
 func uuid() string {
 	var b [16]byte

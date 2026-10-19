@@ -432,7 +432,7 @@ func (m *Model) ctlAnswer(ev hook.Event, ref, request, message string, allow boo
 		ctlReply(ev, map[string]any{"answered": d.Behavior, "agent": a.ID})
 		return nil
 	}
-	// The folder-trust prompt: "No, exit" is highlighted, "Yes, I trust this folder" is next.
+	// The folder-trust prompt, answered with the keys its tool says mean yes.
 	if !allow {
 		ctlError(ev, fmt.Errorf("to refuse the folder, stop the agent"))
 		return nil
@@ -442,13 +442,19 @@ func (m *Model) ctlAnswer(ev hook.Event, ref, request, message string, allow boo
 		return nil
 	}
 	tm, pane := m.opt.Tmux, a.pane
+	t, _ := m.adapter(a.Tool).(agent.Truster)
 	return func() tea.Msg {
 		screen, err := tm.Capture(pane)
-		if err == nil && !strings.Contains(screen, "Yes, I trust this folder") {
-			err = fmt.Errorf("the folder-trust prompt on screen isn't the one lanes knows; answer it in the pane")
+		var keys []string
+		ok := false
+		if err == nil && t != nil {
+			keys, ok = t.TrustKeys(screen)
+		}
+		if err == nil && !ok {
+			err = fmt.Errorf("the folder-trust prompt on screen isn't one lanes knows how to answer; answer it in the pane")
 		}
 		if err == nil {
-			err = tm.SendKeys(pane, "Down", "Enter")
+			err = tm.SendKeys(pane, keys...)
 		}
 		if err != nil {
 			ctlError(ev, err)

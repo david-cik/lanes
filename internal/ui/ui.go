@@ -163,7 +163,7 @@ func New(opt Options) *Model {
 		m.readers = defaultReaders()
 	}
 	if m.readers.Ask == nil {
-		m.readers.Ask = claudeAsk("sonnet")
+		m.readers.Ask = m.askAgent
 	}
 	if m.opt.Prefix == "" {
 		m.opt.Prefix = "Ctrl-b"

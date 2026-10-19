@@ -85,6 +85,34 @@ func (m *Model) controllable() (*agent.Agent, bool) {
 	return nil, false
 }
 
+// pick is the tool to use for something only some tools can do: the one named (when
+// set, only it), else the default agent, else the first installed tool that can.
+func (m *Model) pick(name string, can func(agent.Adapter) bool) agent.Adapter {
+	if name != "" {
+		if a := m.adapter(name); a != nil && can(a) {
+			return a
+		}
+		return nil
+	}
+	if a := m.adapter(m.opt.Config.DefaultAgent); a != nil && can(a) {
+		return a
+	}
+	for _, a := range m.opt.Adapters {
+		if can(a) {
+			return a
+		}
+	}
+	return nil
+}
+
+// named says which setting chose a tool that isn't there, for error messages.
+func named(name, setting string) string {
+	if name == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (%s = %q isn't installed, or can't)", setting, name)
+}
+
 func (m *Model) adapter(name string) agent.Adapter {
 	for _, a := range m.opt.Adapters {
 		if a.Name() == name {
@@ -248,19 +276,27 @@ func (m *Model) newAgent() tea.Cmd {
 // startOn starts an agent on issue, after asking which tool (if there's a choice) and
 // confirming the plan.
 func (m *Model) startOn(issue tracker.Issue) tea.Cmd {
-	ads := slices.Clone(m.opt.Adapters)
-	slices.SortStableFunc(ads, func(a, b agent.Adapter) int { // default agent first
-		return boolInt(b.Name() == m.opt.Config.DefaultAgent) - boolInt(a.Name() == m.opt.Config.DefaultAgent)
-	})
-	if len(ads) == 1 {
-		return m.fetchDetail(issue, ads[0])
+	a := m.adapter(m.opt.Config.DefaultAgent)
+	if a == nil && len(m.opt.Adapters) > 0 {
+		a = m.opt.Adapters[0]
 	}
+	if a == nil {
+		m.say("", fmt.Errorf("no agent tool is installed (default_agent = %q)", m.opt.Config.DefaultAgent))
+		return nil
+	}
+	return m.fetchDetail(issue, a) // the start screen offers the other tools
+}
+
+// otherTool lets the user start ticket d with another installed tool.
+func (m *Model) otherTool(d tracker.Issue, now string) tea.Cmd {
 	var items []choice
-	for _, a := range ads {
-		items = append(items, choice{a.Name(), a.Name()})
+	for _, a := range m.opt.Adapters {
+		if a.Name() != now {
+			items = append(items, choice{a.Name(), a.Name()})
+		}
 	}
-	m.modal = &modal{title: "New agent on " + issue.Key + " — which tool?", items: items,
-		onChoose: func(c choice) tea.Cmd { return m.fetchDetail(issue, m.adapter(c.value)) }}
+	m.modal = &modal{title: "Start " + d.Key + " with which tool?", items: items,
+		onChoose: func(c choice) tea.Cmd { return m.fetchDetail(d, m.adapter(c.value)) }}
 	return nil
 }
 
@@ -411,8 +447,8 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 	if warning != "" {
 		lines = append(lines, "", waitS.Render("⚠ "+warning))
 	}
-	if _, err := os.Stat(p.Worktree); err != nil && p.Adapter.Name() == "claude" {
-		lines = append(lines, "", "Claude will ask whether to trust this new folder; answer in the right pane.")
+	if _, trusts := p.Adapter.(agent.Truster); trusts && !exists(p.Worktree) {
+		lines = append(lines, "", p.Adapter.Name()+" will ask whether to trust this new folder; answer in the right pane.")
 	}
 	if strings.Contains(p.HookBin, "go-build") {
 		lines = append(lines, "", waitS.Render("⚠ lanes is running via `go run`: the agent's hooks will break once it exits (use go install)"))
@@ -459,6 +495,11 @@ func (m *Model) confirmLaunch(p launch.Plan) tea.Cmd {
 		{"y", "start", start},
 		{"enter", "start", start},
 		{"f", "start in another folder", func() (tea.Cmd, bool) { return m.pickFolder(p.Ticket, p.Adapter), true }},
+	}
+	if len(m.opt.Adapters) > 1 {
+		acts = append(acts, action{"t", "use another tool (now " + p.Adapter.Name() + ")", func() (tea.Cmd, bool) {
+			return m.otherTool(p.Ticket.Issue, p.Adapter.Name()), true
+		}})
 	}
 	md := &modal{title: "Start an agent on " + p.Ticket.Key + "?", lines: lines}
 	if p.InPlace {
@@ -534,7 +575,8 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 	} else {
 		m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)
 	}
-	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane), msg.claim) // claim only a ticket an agent started on
+	t, _ := m.adapter(msg.rec.Tool).(agent.Truster)
+	return tea.Batch(m.fetchAgents(), m.watchTrust(msg.rec.ID, msg.rec.Pane, t), msg.claim) // claim only a ticket an agent started on
 }
 
 // --- send / stop / link ---
@@ -783,3 +825,5 @@ func (m *Model) confirmAdopt(p launch.Plan, name string) tea.Cmd {
 		}}
 	return nil
 }
+
+func exists(path string) bool { _, err := os.Stat(path); return err == nil }
