@@ -84,7 +84,10 @@ func (f Fleet) paneStatus(r state.Record, ad agent.Adapter, now time.Time) (agen
 	}
 	prev, seen := f.Seen.last[r.ID]
 	changed := prev.changed
-	if !seen || sum != prev.sum {
+	switch {
+	case !seen: // first look (or lanes restarted): as busy as a new agent, as quiet as an old one
+		changed = r.CreatedAt
+	case sum != prev.sum:
 		changed = now
 	}
 	status := agent.Idle

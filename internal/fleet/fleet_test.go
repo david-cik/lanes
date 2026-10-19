@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -117,18 +118,24 @@ func (waiter) WaitingText() []string { return []string{"Allow it?"} }
 
 func TestPaneStatusForToolsWithoutHooks(t *testing.T) {
 	store := state.Store{Dir: t.TempDir()}
-	store.Save(state.Record{ID: "r1", Tool: "x", Pane: "%1"})
-	screen := "thinking…"
 	clock := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store.Save(state.Record{ID: "r1", Tool: "x", Pane: "%1", CreatedAt: clock})
+	store.Save(state.Record{ID: "old", Tool: "x", Pane: "%2", CreatedAt: clock.Add(-time.Hour)})
+	screen := "thinking…"
 	f := Fleet{Adapters: []agent.Adapter{waiter{}}, Store: store, Seen: &PaneMemory{},
-		Tmux: screens{panes{ps: []tmux.Pane{{ID: "%1", Agent: "r1"}}}, &screen},
+		Tmux: screens{panes{ps: []tmux.Pane{{ID: "%1", Agent: "r1"}, {ID: "%2", Agent: "old"}}}, &screen},
 		Now:  func() time.Time { return clock }}
+	first := true
 	status := func() agent.Status {
 		got, _, err := f.Snapshot(context.Background())
-		if err != nil || len(got) != 1 {
+		if err != nil || len(got) != 2 {
 			t.Fatalf("%v %v", got, err)
 		}
-		return got[0].Status
+		if i := slices.IndexFunc(got, func(a agent.Agent) bool { return a.RecordID == "old" }); first && got[i].Status != agent.Idle {
+			t.Fatalf("an agent lanes finds after a restart reads as working: %+v", got[i])
+		}
+		first = false
+		return got[slices.IndexFunc(got, func(a agent.Agent) bool { return a.RecordID == "r1" })].Status
 	}
 	for i, step := range []struct {
 		after  time.Duration // since the last look
