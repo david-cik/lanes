@@ -29,9 +29,10 @@ an agent in plain words ("find my old sessions for this ticket").
 
 - macOS or Linux
 - [tmux](https://github.com/tmux/tmux) 3.3 or newer (lanes runs inside it)
-- An agent CLI: [Claude Code](https://docs.claude.com/en/docs/claude-code) has the most
-  built-in support today; Codex is built in too, and any other CLI can be added in the
-  config (see [Other agent tools](#other-agent-tools))
+- An agent CLI: [Claude Code](https://docs.claude.com/en/docs/claude-code) and
+  [GitHub Copilot CLI](https://github.com/github/copilot-cli) (1.0 or newer) are built in,
+  Codex partly; any other CLI can be added in the config (see
+  [Other agent tools](#other-agent-tools))
 - [GitHub CLI](https://cli.github.com) (`gh`, signed in) for pull request details — optional
 - Go (latest) to install
 
@@ -362,10 +363,24 @@ hand.
 
 ## Other agent tools
 
-lanes starts, watches, and stops agents through a small adapter per tool. Claude Code has
-the most built in (live status, answering prompts, sessions lanes didn't start, transcripts,
-`:` and `N`, coordinators); each feature checks what the tool can do, and `default_agent`,
-`ask_agent`, and `coordinator.agent` pick which tool does what.
+lanes starts, watches, and stops agents through a small adapter per tool. Each feature
+checks what the tool can do, and `default_agent`, `ask_agent`, and `coordinator.agent`
+pick which tool does what.
+
+| | Claude Code | Copilot CLI | Codex | any other (config) |
+|---|---|---|---|---|
+| start, send, stop | ✓ | ✓ | ✓ | ✓ |
+| live status, ready, needs you | ✓ hooks | ✓ hooks (a plugin lanes loads per session) | from its pane | from its pane |
+| answer its prompts from lanes (`a`) | ✓ | — answer in its pane | — | — |
+| folder-trust prompt spotted | ✓ | ✓ | — | — |
+| sessions you started yourself on the board | ✓ | — (`lanes sessions` lists them) | — | — |
+| transcripts: `T`, auto_link, `read`, `N` from a session | ✓ | ✓ | — | — |
+| `:` and `N` (`ask_agent`) | ✓ | ✓ | — | — |
+| coordinator (`coordinator.agent`) | ✓ | ✓ | — | — |
+| resume an ended session | ✓ | — | — | — |
+
+Copilot asks before tool use through a hook that runs ahead of its own rules, so lanes
+leaves those prompts to its pane rather than hold up every call.
 
 Any other CLI works from the config, with no code: lanes can start it on a ticket, show it,
 send it text, and stop it, and reads its status from its pane: changing = working, still =

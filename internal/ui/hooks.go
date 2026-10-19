@@ -102,6 +102,7 @@ func (m *Model) hook(ev hook.Event) tea.Cmd {
 		return nil
 	}
 	st.trust = false
+	m.learnSession(ev.Agent, he.SessionID)
 	// Progress, or a new question, means an earlier request was answered elsewhere
 	// (in the pane). A later "waiting" notification about the same prompt is not progress.
 	if st.pending != nil && (he.Request != nil || he.Status == agent.Working || he.Status == agent.Idle || he.Status == agent.Done) {
@@ -558,4 +559,18 @@ func (m *Model) paneChanges(next []agent.Agent) tea.Cmd {
 		}
 	}
 	return tea.Batch(cmds...)
+}
+
+// learnSession saves the session id a tool reported, for an agent lanes started without
+// one (the tool can't be given an id at launch), so its transcript can be found.
+func (m *Model) learnSession(id, session string) {
+	i := slices.IndexFunc(m.live, func(r state.Record) bool { return r.ID == id })
+	if session == "" || i < 0 || m.live[i].SessionID != "" {
+		return
+	}
+	if err := m.opt.Store.SetRecordSession(id, session); err != nil {
+		m.say("", err)
+		return
+	}
+	m.live[i].SessionID = session
 }

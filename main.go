@@ -25,6 +25,7 @@ import (
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/agent/claude"
 	"github.com/david-cik/lanes/internal/agent/codex"
+	"github.com/david-cik/lanes/internal/agent/copilot"
 	"github.com/david-cik/lanes/internal/agent/generic"
 	"github.com/david-cik/lanes/internal/config"
 	"github.com/david-cik/lanes/internal/fleet"
@@ -686,7 +687,11 @@ func execInTmux(tm tmux.Client) error {
 // installedAdapters is every agent tool lanes can use here: the built-in ones, then any
 // [agents.<name>] with a command, each only if its program is installed.
 func installedAdapters(cfg config.Config) []agent.Adapter {
-	all := []agent.Adapter{claude.New(), codex.New()}
+	cop := copilot.New()
+	if dir, err := config.StateDir(); err == nil {
+		cop.WithPluginDir(filepath.Join(dir, "copilot-plugin"))
+	}
+	all := []agent.Adapter{claude.New(), codex.New(), cop}
 	builtin := map[string]bool{}
 	for _, a := range all {
 		builtin[a.Name()] = true

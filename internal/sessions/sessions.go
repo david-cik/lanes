@@ -53,6 +53,11 @@ func List(ads []agent.Adapter, running []agent.Agent, days int, store state.Stor
 	for _, a := range running {
 		alive[state.LinkKey(a.Tool, a.ID)] = a
 	}
+	for _, r := range recs { // lanes' own agents run while their record lasts, even of a tool that can't list them
+		if k := state.LinkKey(r.Tool, r.SessionID); r.SessionID != "" && alive[k].ID == "" {
+			alive[k] = agent.Agent{ID: r.SessionID, Tool: r.Tool, Name: r.Name, Cwd: r.Worktree, Since: r.CreatedAt}
+		}
+	}
 	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
 	seen := map[string]bool{}
 	var out []Session

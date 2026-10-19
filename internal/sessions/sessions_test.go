@@ -95,3 +95,15 @@ func TestRunningSessionWithoutTranscript(t *testing.T) {
 		t.Fatalf("list %+v", all)
 	}
 }
+
+func TestLanesAgentsCountAsRunning(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	write(t, cfg, "eeee5555", `{"type":"user","cwd":"/src","message":{"content":"mine"}}`+"\n", 30*24*time.Hour)
+	store := state.Store{Dir: t.TempDir()}
+	store.Save(state.Record{ID: "r5", Tool: "claude", SessionID: "eeee5555", TicketKey: "ABC-5"})
+	all := List(ads, nil, 7, store) // the tool listed nothing running: lanes' record says it is
+	if len(all) != 1 || !all[0].Running || all[0].Ticket != "ABC-5" {
+		t.Fatalf("%+v", all)
+	}
+}

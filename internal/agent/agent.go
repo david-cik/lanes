@@ -170,6 +170,9 @@ type HookEvent struct {
 	Request  *Request // set when the tool asks for permission
 	Activity string   // one line for the activity log; "" = nothing worth logging
 	Writes   []string // files the tool is about to change (absolute paths)
+	// SessionID is the tool's own id for the session, for a tool that can't be given one
+	// at launch: lanes learns it from the hook.
+	SessionID string
 }
 
 type Request struct {

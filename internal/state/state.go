@@ -228,6 +228,21 @@ func (s Store) DeleteLink(key string) (Links, error) {
 	return s.editLinks(func(l Links) bool { delete(l, key); return true })
 }
 
+// SetRecordSession records the tool's own session id for a launched agent, learned after
+// it started (for tools that can't be given one at launch).
+func (s Store) SetRecordSession(id, session string) error {
+	return s.locked(func() error {
+		recs, _ := s.All()
+		for _, r := range recs {
+			if r.ID == id {
+				r.SessionID = session
+				return s.Save(r)
+			}
+		}
+		return fmt.Errorf("no launched agent %s", id)
+	})
+}
+
 // SetRecordTicket changes the ticket of a launched agent's record on disk.
 func (s Store) SetRecordTicket(id, ticket string) (Record, error) {
 	var out Record
