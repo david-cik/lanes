@@ -47,6 +47,7 @@ type waiter struct {
 	reply func([]byte)
 	after int
 	only  []string // agent ids or ticket keys; empty = any
+	self  string   // the waiting agent's own id: its own events aren't news to it
 }
 
 type ctlTimeoutMsg struct{ id int }
@@ -103,6 +104,7 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 		After   *int     `json:"after"`
 		Only    []string `json:"only"`
 		Timeout float64  `json:"timeout"` // seconds
+		Self    string   `json:"self"`
 	}
 	if len(ev.Payload) > 0 && json.Unmarshal(ev.Payload, &args) != nil {
 		ctlError(ev, fmt.Errorf("bad arguments"))
@@ -167,7 +169,7 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 			return nil
 		}
 	case "wait":
-		w := waiter{reply: ev.Reply, after: m.ctlSeq, only: args.Only}
+		w := waiter{reply: ev.Reply, after: m.ctlSeq, only: args.Only, self: args.Self}
 		if args.After != nil && *args.After <= m.ctlSeq {
 			w.after = *args.After
 		} else if args.After != nil { // a seq this panel never gave out: everything it has is new
@@ -201,7 +203,7 @@ func (m *Model) ctlTimeout(id int) {
 func (m *Model) answerWaiter(w waiter) bool {
 	var got []ctlEvent
 	for _, e := range m.ctlLog {
-		if e.Seq > w.after && (len(w.only) == 0 || slices.ContainsFunc(w.only, func(s string) bool {
+		if e.Seq > w.after && e.Agent != w.self && (len(w.only) == 0 || slices.ContainsFunc(w.only, func(s string) bool {
 			return strings.EqualFold(s, e.Agent) || strings.EqualFold(s, e.Ticket)
 		})) {
 			got = append(got, e)

@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/david-cik/lanes/internal/fleet"
 	"github.com/david-cik/lanes/internal/hook"
 	"github.com/david-cik/lanes/internal/install"
+	"github.com/david-cik/lanes/internal/mcp"
 	"github.com/david-cik/lanes/internal/sessions"
 	"github.com/david-cik/lanes/internal/state"
 	"github.com/david-cik/lanes/internal/tmux"
@@ -82,6 +84,7 @@ func run() error {
   lanes read <agent>                     an agent's latest reply
   lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
                                          block until an agent starts, finishes a turn, needs you, or ends
+  lanes mcp                              the same, as an MCP server on stdin/stdout (tools agents, start, send, read, wait)
 
 flags:
 `)
@@ -92,6 +95,18 @@ flags:
 	}
 	if len(os.Args) > 1 && (os.Args[1] == "sessions" || os.Args[1] == "link" || os.Args[1] == "unlink") {
 		return sessionsCommand(os.Args[1], os.Args[2:])
+	}
+	if len(os.Args) == 2 && os.Args[1] == "mcp" {
+		version := "devel"
+		if bi, ok := debug.ReadBuildInfo(); ok {
+			version = bi.Main.Version
+		}
+		return mcp.Serve(os.Stdin, os.Stdout, func(op string, args map[string]any) ([]byte, error) {
+			if op == "wait" {
+				args["self"] = os.Getenv("LANES_AGENT_ID")
+			}
+			return hook.Call(cmp.Or(os.Getenv("LANES_SOCKET"), config.SocketPath()), op, args)
+		}, version)
 	}
 	if len(os.Args) > 1 && slices.Contains([]string{"agents", "start", "send", "read", "wait"}, os.Args[1]) {
 		return controlCommand(os.Args[1], os.Args[2:])
@@ -273,7 +288,7 @@ func controlCommand(cmd string, args []string) error {
 			req["agent"] = rest[0]
 		}
 	case "wait":
-		req["only"], req["timeout"] = rest, timeout.Seconds()
+		req["only"], req["timeout"], req["self"] = rest, timeout.Seconds(), os.Getenv("LANES_AGENT_ID")
 		if *after >= 0 {
 			req["after"] = *after
 		}

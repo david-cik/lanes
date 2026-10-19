@@ -1,10 +1,11 @@
 package ui
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,40 +21,23 @@ import (
 )
 
 // A project's coordinator is a Claude session on no ticket that looks after the
-// project's tickets and agents through `lanes agents|start|send|read|wait` (see
-// control.go). There is at most one per project.
+// project's tickets and agents through the lanes MCP tools (`lanes mcp`, which makes
+// the control requests in control.go). There is at most one per project.
 
-// coordinatorPrompt is the coordinator's first prompt; bin is how it runs lanes.
-func coordinatorPrompt(project, bin string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(`You coordinate the work on the project "{project}" in lanes, a board of tickets and the coding agents working them. You don't change code yourself: you keep the project's agents moving, stop them from duplicating each other, and keep the user informed.
+// coordinatorPrompt is the coordinator's first prompt.
+func coordinatorPrompt(project string) string {
+	return strings.ReplaceAll(`You coordinate the work on the project "{project}" in lanes, a board of tickets and the coding agents working them. You don't change code yourself: you keep the project's agents moving, stop them from duplicating each other, and keep the user informed.
 
-Commands (run them with Bash; they print JSON):
-- {bin} agents --project "{project}": the project's tickets, their states, and the agents on each (status, ready, waiting, recent activity)
-- {bin} start <TICKET> [instructions…]: ask the user to start an agent on a ticket. They confirm in the lanes panel; the instructions are added to the agent's first prompt.
-- {bin} send <agent> <text…>: tell an agent something, as if the user typed it
-- {bin} read <agent>: what an agent wrote since its last prompt
-- {bin} wait --after <seq> [agent or TICKET…]: wait up to 90 seconds for an agent to start, finish a turn ("ready"), need the user, or end. Pass back the seq from the previous answer so nothing is missed.
+Use the lanes tools (agents, start, send, read, wait). Call agents with project "{project}" to see its tickets and the agents on each. start only asks the user: they confirm in the lanes panel. Name an agent by its id from agents, or by its ticket. Loop on wait (passing back its seq as after) while agents work. When an agent needs the user (a permission prompt), tell the user: you can't answer it. When starting agents on related tickets, tell each one which parts the others own.
 
-Name an agent by its id from {bin} agents, or by its ticket. When an agent needs the user (a permission prompt), tell the user: you can't answer it. When starting agents on related tickets, tell each one which parts the others own.
-
-Start by running {bin} agents --project "{project}", summarise where the project stands in a few lines, and ask the user what they want done.`,
-		"{project}", project), "{bin}", bin)
+Start by calling agents for "{project}", summarise where the project stands in a few lines, and ask the user what they want done.`,
+		"{project}", project)
 }
 
-// lanesBin is how a coordinator should run lanes: "lanes" if that is this executable
-// on the PATH, else its full path.
-func lanesBin(self string) string {
-	if p, err := exec.LookPath("lanes"); err == nil && self != "" {
-		a, errA := filepath.EvalSymlinks(p)
-		b, errB := filepath.EvalSymlinks(self)
-		if errA == nil && errB == nil && a == b {
-			return "lanes"
-		}
-	}
-	if self == "" {
-		return "lanes"
-	}
-	return self
+// mcpConfig is the --mcp-config that gives an agent the lanes tools (`bin mcp`).
+func mcpConfig(bin string) string {
+	b, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"lanes": map[string]any{"type": "stdio", "command": bin, "args": []string{"mcp"}}}})
+	return string(b)
 }
 
 // selectedProject is the project of the row under the cursor: a project heading, a
@@ -100,17 +84,18 @@ func (m *Model) startCoordinator() tea.Cmd {
 	if dir == "" {
 		dir, _ = os.UserHomeDir()
 	}
-	bin := lanesBin(m.opt.HookBin)
+	bin := cmp.Or(m.opt.HookBin, "lanes")
 	var rules []string
 	for _, c := range []string{"agents", "start", "send", "read", "wait"} {
-		rules = append(rules, "Bash("+bin+" "+c+":*)")
+		rules = append(rules, "mcp__lanes__"+c)
 	}
 	p := launch.Plan{
 		Ticket: tracker.IssueDetail{Issue: tracker.Issue{Key: state.NoTicket}}, Repo: launch.Repo{Name: filepath.Base(dir), Path: dir},
 		Adapter: a, Worktree: dir, InPlace: true, Name: "coordinator · " + project, Project: project,
-		// "=" keeps the variadic flag from taking the prompt after it as another rule.
-		Args:    append(slices.Clone(m.opt.Config.Agents[a.Name()].Args), "--allowedTools="+strings.Join(rules, ",")),
-		Prompt:  coordinatorPrompt(project, bin),
+		// "=" keeps these variadic flags from taking the prompt after them as a value.
+		Args: append(slices.Clone(m.opt.Config.Agents[a.Name()].Args),
+			"--mcp-config="+mcpConfig(bin), "--allowedTools="+strings.Join(rules, ",")),
+		Prompt:  coordinatorPrompt(project),
 		HookBin: m.opt.HookBin, Socket: m.opt.Socket,
 	}
 	tm, store := m.opt.Tmux, m.opt.Store
@@ -129,8 +114,8 @@ func (m *Model) startCoordinator() tea.Cmd {
 		"folder:   " + home(dir),
 		"",
 		"It watches the project's tickets and agents, and talks to the agents for you.",
-		"It runs lanes agents / send / read / wait without asking;",
-		"lanes start asks you here before any agent starts.",
+		"It uses the lanes tools (agents, send, read, wait) without asking;",
+		"its start asks you here before any agent starts.",
 		"It can't answer an agent's permission prompts: those stay yours.",
 	}, actions: []action{{"y", "start", start}, {"enter", "start", start}}}
 	return nil

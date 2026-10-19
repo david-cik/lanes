@@ -49,6 +49,7 @@ func TestControlAgentsListsTicketsAndAgents(t *testing.T) {
 func TestControlWait(t *testing.T) {
 	m, _, _ := hookModel(t)
 	only2, _ := ctl(m, 1, "wait", `{"only":["r2"]}`)
+	self1, _ := ctl(m, 9, "wait", `{"self":"r1"}`) // r1's own events aren't news to it
 	any1, _ := ctl(m, 2, "wait", `{}`)
 	if *any1 != nil {
 		t.Fatalf("answered before anything happened: %v", *any1)
@@ -59,8 +60,8 @@ func TestControlWait(t *testing.T) {
 	if len(evs) != 1 || evs[0].(map[string]any)["kind"] != "ready" || evs[0].(map[string]any)["ticket"] != "ABC-1" {
 		t.Fatalf("%v", *any1)
 	}
-	if *only2 != nil {
-		t.Fatalf("woke for another agent: %v", *only2)
+	if *only2 != nil || *self1 != nil {
+		t.Fatalf("woke for another agent, or itself: %v %v", *only2, *self1)
 	}
 	seq := int((*any1)["seq"].(float64))
 	// Missed while not waiting: a wait from an earlier seq answers at once.
@@ -192,8 +193,9 @@ func TestCoordinatorStartsOncePerProject(t *testing.T) {
 	_, cmd := m.Update(key("y"))
 	m.Update(cmd()) // launchedMsg
 	argv := strings.Join(ft.argv, "\n")
-	if !strings.Contains(argv, "--allowedTools=Bash(lanes agents:*),Bash(lanes start:*),Bash(lanes send:*),Bash(lanes read:*),Bash(lanes wait:*)") ||
-		!strings.Contains(argv, `lanes agents --project "Apollo"`) || !strings.Contains(argv, "coordinator · Apollo") {
+	if !strings.Contains(argv, "--allowedTools=mcp__lanes__agents,mcp__lanes__start,mcp__lanes__send,mcp__lanes__read,mcp__lanes__wait") ||
+		!strings.Contains(argv, `--mcp-config={"mcpServers":{"lanes":{"args":["mcp"],"command":"lanes","type":"stdio"}}}`) ||
+		!strings.Contains(argv, `calling agents for "Apollo"`) || !strings.Contains(argv, "coordinator · Apollo") {
 		t.Fatalf("argv:\n%s", argv)
 	}
 	if !strings.Contains(m.notice, "started the coordinator of Apollo") || m.live[len(m.live)-1].Project != "Apollo" {

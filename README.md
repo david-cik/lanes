@@ -227,9 +227,9 @@ Claude session on no ticket that keeps the project's agents moving and talks to 
 you. It opens with a summary of where the project stands and asks what you want done; from
 there you can say things like "start agents on the two DNS tickets and keep them from
 overlapping". It's listed under **Coordinators** at the bottom of the board, and there's
-one per project (`C` again shows it). It uses the commands below, which it may run without
-asking; starting an agent still needs your yes in the panel, and the agents' permission
-prompts stay yours. You can always talk to a ticket's agent directly as before.
+one per project (`C` again shows it). It uses the lanes MCP tools (below), which it may
+call without asking; starting an agent still needs your yes in the panel, and the agents'
+permission prompts stay yours. You can always talk to a ticket's agent directly as before.
 
 ### Letting one agent coordinate others
 
@@ -246,6 +246,11 @@ lanes read <agent>                    # what the agent wrote since its last prom
 lanes wait [--after SEQ] [--timeout D] [agent|TICKET…]
                                       # block until an agent starts, finishes a turn (ready), needs you, or ends
 ```
+
+The same requests are MCP tools (`agents`, `start`, `send`, `read`, `wait`) from
+`lanes mcp`, a server on stdin/stdout. Coordinators get it automatically; to give it to
+any other Claude session, `claude mcp add lanes -- lanes mcp`. An agent's own events are
+left out of its waits.
 
 `lanes start` never starts anything by itself: the panel shows the usual start screen,
 marked as asked for by another agent with its instructions, and you say yes or no
