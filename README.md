@@ -30,8 +30,9 @@ an agent in plain words ("find my old sessions for this ticket").
 - macOS or Linux
 - [tmux](https://github.com/tmux/tmux) 3.3 or newer (lanes runs inside it)
 - An agent CLI: [Claude Code](https://docs.claude.com/en/docs/claude-code) and
-  [GitHub Copilot CLI](https://github.com/github/copilot-cli) (1.0 or newer) are built in,
-  Codex partly; any other CLI can be added in the config (see
+  [GitHub Copilot CLI](https://github.com/github/copilot-cli) (1.0 or newer), and
+  [Codex](https://github.com/openai/codex) are built in; any other CLI can be added in the
+  config (see
   [Other agent tools](#other-agent-tools))
 - [GitHub CLI](https://cli.github.com) (`gh`, signed in) for pull request details — optional
 - Go (latest) to install
@@ -370,17 +371,24 @@ pick which tool does what.
 | | Claude Code | Copilot CLI | Codex | any other (config) |
 |---|---|---|---|---|
 | start, send, stop | ✓ | ✓ | ✓ | ✓ |
-| live status, ready, needs you | ✓ hooks | ✓ hooks (a plugin lanes loads per session) | from its pane | from its pane |
-| answer its prompts from lanes (`a`) | ✓ | — answer in its pane | — | — |
-| folder-trust prompt spotted | ✓ | ✓ | — | — |
-| sessions you started yourself on the board | ✓ | — (`lanes sessions` lists them) | — | — |
-| transcripts: `T`, auto_link, `read`, `N` from a session | ✓ | ✓ | — | — |
-| `:` and `N` (`ask_agent`) | ✓ | ✓ | — | — |
-| coordinator (`coordinator.agent`) | ✓ | ✓ | — | — |
-| resume an ended session | ✓ | — | — | — |
+| live status, ready, needs you | ✓ hooks | ✓ hooks (a plugin lanes loads per session) | ✓ hooks (passed per session) | from its pane |
+| answer its prompts from lanes (`a`) | ✓ | — answer in its pane | ✓ | — |
+| folder-trust prompt spotted | ✓ | ✓ | ✓ | — |
+| sessions you started yourself on the board | ✓ | — (`lanes sessions` lists them) | — (`lanes sessions` lists them) | — |
+| transcripts: `T`, auto_link, `read`, `N` from a session | ✓ | ✓ | ✓ | — |
+| `:` and `N` (`ask_agent`) | ✓ | ✓ | ✓ (`codex exec`, read-only, not saved) | — |
+| coordinator (`coordinator.agent`) | ✓ | ✓ | ✓ | — |
+| resume an ended session | ✓ | — | ✓ (`codex fork`) | — |
 
 Copilot asks before tool use through a hook that runs ahead of its own rules, so lanes
 leaves those prompts to its pane rather than hold up every call.
+
+Codex runs only hooks you've trusted in its `/hooks` screen, so lanes starts Codex with
+`--dangerously-bypass-hook-trust` alongside its own hooks: in those sessions, any hooks
+you've configured in Codex but never trusted run too. While lanes holds a Codex
+permission request, Codex shows "Working" rather than its own prompt: answer with `a` on
+the board (`p` there hands it back to Codex's prompt). Codex sessions lanes starts this way
+don't show in `codex agents`.
 
 Any other CLI works from the config, with no code: lanes can start it on a ticket, show it,
 send it text, and stop it, and reads its status from its pane: changing = working, still =

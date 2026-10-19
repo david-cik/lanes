@@ -33,8 +33,8 @@ type Fleet struct {
 	// NoPrune keeps records even when their panes aren't found, for read-only runs
 	// that may not be looking at the tmux server the agents live on.
 	NoPrune bool
-	// Seen remembers what the panes of agents without hooks last showed (their status
-	// comes from that); nil = such agents' status is unknown.
+	// Seen remembers what the panes of lanes' agents last showed, for those whose tool
+	// doesn't list them (their status comes from that); nil = their status is unknown.
 	Seen *PaneMemory
 	Now  func() time.Time // nil = time.Now
 }
@@ -174,17 +174,17 @@ func (f Fleet) Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, err
 			ID: r.SessionID, Tool: r.Tool, Name: recordName(r), Cwd: r.Worktree, Status: agent.Unknown,
 			Since: r.CreatedAt, TicketKey: r.TicketKey, RecordID: r.ID, Pane: r.Pane, Project: r.Project,
 		}
-		if ad := adapterNamed(f.Adapters, r.Tool); ad != nil {
-			if _, hooks := ad.(agent.Hooker); !hooks && !f.NoPrune {
-				a.Status, a.Since = f.paneStatus(r, ad, f.now())
-			}
-		}
 		if r.SessionID != "" {
 			k := state.LinkKey(r.Tool, r.SessionID)
 			if l, ok := listed[k]; ok {
 				a.Status, a.Name = l.Status, l.Name
 				delete(listed, k)
 			}
+		}
+		// Not listed by its tool: its pane says. For a tool with hooks this is only until
+		// its next hook (the panel's hook status wins), e.g. after the panel restarts.
+		if ad := adapterNamed(f.Adapters, r.Tool); ad != nil && a.Status == agent.Unknown && !f.NoPrune {
+			a.Status, a.Since = f.paneStatus(r, ad, f.now())
 		}
 		out = append(out, a)
 	}
