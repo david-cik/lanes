@@ -219,6 +219,8 @@ lanes unlink <session-id>          # take it off its ticket
 
 Copy `skills/lanes` into `~/.claude/skills/` and you can just tell Claude "attach my
 session about the export bug to ABC-12". A running panel shows the change within seconds.
+The skill also covers the commands below, so "what did the ABC-12 agent say?" or "wait
+until ABC-12's agent is done" work from any Claude session too.
 
 ### A project's coordinator (`C`)
 
