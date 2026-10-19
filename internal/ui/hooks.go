@@ -522,3 +522,40 @@ func (m *Model) watchTrustGone(id, pane string, t agent.Truster) tea.Cmd {
 		}
 	}
 }
+
+// paneChanges does for agents whose status comes from their pane (tools without hooks)
+// what hooks do for the rest: a turn that ends makes the agent ready, and needing you
+// says so.
+func (m *Model) paneChanges(next []agent.Agent) tea.Cmd {
+	was := map[string]agent.Status{}
+	for _, a := range m.agents {
+		if a.RecordID != "" {
+			was[a.RecordID] = a.Status
+		}
+	}
+	var cmds []tea.Cmd
+	for _, a := range next {
+		prev, seen := was[a.RecordID]
+		if _, hooks := m.adapter(a.Tool).(agent.Hooker); a.RecordID == "" || hooks || !seen || prev == a.Status {
+			continue
+		}
+		st := m.hooks[a.RecordID]
+		if st == nil {
+			st = &hookState{}
+			m.hooks[a.RecordID] = st
+		}
+		if a.Status != agent.Idle {
+			st.ready = false
+		}
+		switch {
+		case prev == agent.Working && a.Status == agent.Idle:
+			m.event("ready", a.RecordID, "")
+			cmds = append(cmds, m.turnDone(a.RecordID, st))
+		case a.Status == agent.Waiting:
+			st.log(m.now(), "waiting for you (see its pane)")
+			m.event("needs_you", a.RecordID, "see its pane")
+			cmds = append(cmds, m.notify(a.RecordID, "see its pane"))
+		}
+	}
+	return tea.Batch(cmds...)
+}

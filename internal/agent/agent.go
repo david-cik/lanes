@@ -72,6 +72,12 @@ type Coordinates interface {
 	CoordinatorArgs(srv MCPServer, allowed []string) []string
 }
 
+// Waiter is implemented by adapters without hooks whose tool shows known text when it
+// needs the user; lanes then reads their status from their pane.
+type Waiter interface {
+	WaitingText() []string
+}
+
 // Truster is implemented by adapters whose tool asks before working in a folder it
 // hasn't seen.
 type Truster interface {

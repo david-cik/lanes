@@ -363,6 +363,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agentSeen = msg.seq
 		m.agentErr = msg.err
 		if msg.err == nil || len(msg.agents) > 0 {
+			paneCmd := m.paneChanges(msg.agents)
 			m.agents, m.live = dropAdopted(msg.agents, msg.live), msg.live
 			if msg.links != nil {
 				m.links = msg.links
@@ -371,7 +372,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.forgetStopped()
 			m.forgetHooks()
 			m.rebuild()
-			return m, tea.Batch(m.detailsMoved(), m.autoLink())
+			return m, tea.Batch(m.detailsMoved(), m.autoLink(), paneCmd)
 		}
 	case usersMsg:
 		if msg.err != nil {

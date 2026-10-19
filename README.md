@@ -312,6 +312,7 @@ external_poll = "5s"          # how often agent sessions refresh (min 1s)
 repo_roots    = ["~/src", "~/git"]   # where to look for repositories
 launch_dir    = ""            # start new agents in this folder as it is (e.g. "~/git"); "" = a worktree per ticket
 default_agent = "claude"
+ask_agent = ""                # the tool that answers : and drafts N tickets ("" = default_agent if it can)
 branch_template   = "{key_lower}/{slug}"           # must contain {key} or {key_lower}
 worktree_template = "{repo}/.worktrees/{branch}"
 notify_os = false             # also send desktop notifications
@@ -340,8 +341,6 @@ preamble = ""                 # standing instructions, e.g. "Run the tests befor
 [agents.claude]
 args = []                     # extra arguments, e.g. ["--model", "sonnet"]
 
-ask_agent = ""                # the tool that answers : and drafts N tickets ("" = default_agent if it can)
-
 [keys]                        # board keys you changed (lanes keys writes this; --reset removes it)
 start = "n"                   # one character each; names as in `lanes keys`, e.g. send, stop, approve, quit
 
@@ -366,13 +365,16 @@ the most built in (live status, answering prompts, sessions lanes didn't start, 
 `ask_agent`, and `coordinator.agent` pick which tool does what.
 
 Any other CLI works from the config, with no code: lanes can start it on a ticket, show it,
-send it text, and stop it.
+send it text, and stop it, and reads its status from its pane: changing = working, still =
+idle, showing a `waiting` text = needs you (with a ready notification when it goes quiet,
+as for Claude).
 
 ```toml
 [agents.aider]
 command = ["aider"]           # how to run it; lanes adds the first prompt last
 prompt_flag = "--message"     # put this before the prompt ("" = the prompt alone)
 stop = "/exit"                # typed to make it exit (else stop_keys, e.g. ["C-c", "C-c"])
+waiting = ["Allow edits?"]    # text its pane shows when it needs you
 ```
 
 Tools that aren't installed are left out. With more than one installed, the start screen's

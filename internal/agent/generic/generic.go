@@ -27,7 +27,8 @@ func (a *Adapter) Binary() string { return a.cfg.Command[0] }
 func (*Adapter) List(context.Context) ([]agent.Agent, error) { return nil, nil }
 
 func (a *Adapter) Command(spec agent.LaunchSpec) agent.Command {
-	argv := append(append([]string{}, a.cfg.Command...), spec.Args...)
+	argv := append([]string{config.Expand(a.cfg.Command[0])}, a.cfg.Command[1:]...) // tmux runs it without a shell
+	argv = append(argv, spec.Args...)
 	if spec.Prompt != "" {
 		if a.cfg.PromptFlag != "" {
 			argv = append(argv, a.cfg.PromptFlag)
@@ -48,5 +49,5 @@ func (a *Adapter) Stop() (string, []string) {
 	return a.cfg.Stop, a.cfg.StopKeys
 }
 
-// WaitingText is what its pane shows when it needs you (see 1c, pane status).
+// WaitingText is what its pane shows when it needs you; its status comes from its pane.
 func (a *Adapter) WaitingText() []string { return a.cfg.Waiting }

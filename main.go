@@ -177,7 +177,7 @@ flags:
 	adapters := installedAdapters(cfg)
 	opt := ui.Options{
 		Tracker: tr, Adapters: adapters, Store: store, Config: cfg,
-		Fleet:    fleet.Fleet{Adapters: adapters, Store: store, Tmux: tm, NoPrune: panel == ""},
+		Fleet:    fleet.Fleet{Adapters: adapters, Store: store, Tmux: tm, NoPrune: panel == "", Seen: &fleet.PaneMemory{}},
 		Assignee: cfg.Assignee, Issues: issues,
 		LinearPoll: cfg.LinearPoll.Duration, ExternalPoll: cfg.ExternalPoll.Duration,
 	}

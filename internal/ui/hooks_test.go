@@ -390,3 +390,28 @@ func TestPingUsesTheTerminalOrTheSystemNotOneThenTheOther(t *testing.T) {
 		t.Fatalf("system notifier told byTerminal=%v", byTerm)
 	}
 }
+
+func TestPaneStatusChangesNotify(t *testing.T) {
+	m, _ := controlModel(t) // its adapter has no hooks: status comes from the pane
+	var notes []string
+	m.opt.Notify = func(s string, _ bool) { notes = append(notes, s) }
+	w, _ := ctl(m, 1, "wait", `{}`)
+	set := func(s agent.Status) {
+		agents := slices.Clone(m.agents)
+		agents[0].Status = s
+		_, cmd := m.Update(agentsMsg{seq: m.agentSeen + 1, agents: agents, live: m.live})
+		runCmd(cmd)
+	}
+	set(agent.Working)
+	set(agent.Idle) // a turn ended
+	if len(notes) != 1 || !strings.Contains(notes[0], "ABC-1 is ready for you") || m.readyCount() != 1 {
+		t.Fatalf("notes %v ready %d", notes, m.readyCount())
+	}
+	if evs, _ := (*w)["events"].([]any); len(evs) != 1 || evs[0].(map[string]any)["kind"] != "ready" {
+		t.Fatalf("%v", *w)
+	}
+	set(agent.Waiting)
+	if len(notes) != 2 || !strings.Contains(notes[1], "needs you") || m.readyCount() != 0 {
+		t.Fatalf("notes %v ready %d", notes, m.readyCount())
+	}
+}

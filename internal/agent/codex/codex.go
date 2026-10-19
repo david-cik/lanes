@@ -30,3 +30,9 @@ func (*Adapter) Command(spec agent.LaunchSpec) agent.Command {
 }
 
 func (*Adapter) Stop() (string, []string) { return "/quit", nil }
+
+// WaitingText is what Codex's approval prompts show (until lanes uses its hooks).
+func (*Adapter) WaitingText() []string {
+	return []string{"Would you like to run the following command?", "Would you like to grant these permissions?",
+		"Do you want to approve network access", "Press enter to confirm or esc to cancel"}
+}

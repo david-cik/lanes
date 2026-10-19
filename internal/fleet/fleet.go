@@ -4,9 +4,13 @@ package fleet
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/state"
@@ -17,6 +21,11 @@ type Panes interface {
 	Panes() ([]tmux.Pane, error)
 }
 
+// Capturer is the part of tmux that shows what a pane displays.
+type Capturer interface {
+	Capture(pane string) (string, error)
+}
+
 type Fleet struct {
 	Adapters []agent.Adapter
 	Store    state.Store
@@ -24,7 +33,100 @@ type Fleet struct {
 	// NoPrune keeps records even when their panes aren't found, for read-only runs
 	// that may not be looking at the tmux server the agents live on.
 	NoPrune bool
+	// Seen remembers what the panes of agents without hooks last showed (their status
+	// comes from that); nil = such agents' status is unknown.
+	Seen *PaneMemory
+	Now  func() time.Time // nil = time.Now
 }
+
+func (f Fleet) now() time.Time {
+	if f.Now != nil {
+		return f.Now()
+	}
+	return time.Now()
+}
+
+// PaneMemory is what each hookless agent's pane last looked like.
+type PaneMemory struct {
+	mu   sync.Mutex
+	last map[string]paneSeen // by launch record
+}
+
+type paneSeen struct {
+	sum     [32]byte
+	changed time.Time // when it last looked different
+	status  agent.Status
+	since   time.Time
+}
+
+// quiet is how long a pane must stay the same to count as idle: a tool between two
+// lines of output isn't done.
+const quiet = 6 * time.Second
+
+// paneStatus reads a hookless agent's status from its pane: text its tool shows when it
+// needs you = waiting; changed in the last few seconds = working; quiet = idle.
+// ponytail: a tool whose idle screen animates (a clock, a spinner) reads as working;
+// such a tool needs hooks, or a pattern for its idle screen.
+func (f Fleet) paneStatus(r state.Record, ad agent.Adapter, now time.Time) (agent.Status, time.Time) {
+	c, ok := f.Tmux.(Capturer)
+	if !ok || f.Seen == nil || r.Pane == "" {
+		return agent.Unknown, r.CreatedAt
+	}
+	screen, err := c.Capture(r.Pane)
+	if err != nil {
+		return agent.Unknown, r.CreatedAt
+	}
+	sum := sha256.Sum256([]byte(screen))
+	f.Seen.mu.Lock()
+	defer f.Seen.mu.Unlock()
+	if f.Seen.last == nil {
+		f.Seen.last = map[string]paneSeen{}
+	}
+	prev, seen := f.Seen.last[r.ID]
+	changed := prev.changed
+	if !seen || sum != prev.sum {
+		changed = now
+	}
+	status := agent.Idle
+	switch {
+	case waiting(screen, ad):
+		status = agent.Waiting
+	case now.Sub(changed) < quiet:
+		status = agent.Working
+	}
+	since := prev.since
+	if !seen || status != prev.status {
+		since = now
+	}
+	f.Seen.last[r.ID] = paneSeen{sum, changed, status, since}
+	return status, since
+}
+
+// waiting says whether the bottom of screen, where a question still waiting for an
+// answer sits, shows one of the tool's waiting texts. An answered one higher up, in what
+// the tool printed since, doesn't count.
+func waiting(screen string, ad agent.Adapter) bool {
+	w, ok := ad.(agent.Waiter)
+	if !ok {
+		return false
+	}
+	var lines []string
+	for _, l := range strings.Split(screen, "\n") {
+		if strings.TrimSpace(l) != "" {
+			lines = append(lines, l)
+		}
+	}
+	bottom := strings.Join(lines[max(0, len(lines)-waitLines):], "\n")
+	for _, t := range w.WaitingText() {
+		if t != "" && strings.Contains(bottom, t) {
+			return true
+		}
+	}
+	return false
+}
+
+// waitLines is how far up from the bottom a question can be: a dialog plus a footer.
+const waitLines = 8
 
 // Snapshot returns all agents and the live launch records.
 func (f Fleet) Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, error) {
@@ -68,6 +170,11 @@ func (f Fleet) Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, err
 		a := agent.Agent{
 			ID: r.SessionID, Tool: r.Tool, Name: recordName(r), Cwd: r.Worktree, Status: agent.Unknown,
 			Since: r.CreatedAt, TicketKey: r.TicketKey, RecordID: r.ID, Pane: r.Pane, Project: r.Project,
+		}
+		if ad := adapterNamed(f.Adapters, r.Tool); ad != nil {
+			if _, hooks := ad.(agent.Hooker); !hooks && !f.NoPrune {
+				a.Status, a.Since = f.paneStatus(r, ad, f.now())
+			}
 		}
 		if r.SessionID != "" {
 			k := state.LinkKey(r.Tool, r.SessionID)
@@ -139,4 +246,13 @@ func Reconcile(tm ReconcileTmux) error {
 		errs = append(errs, tm.Swap(p.ID, dummy), tm.KillPane(dummy))
 	}
 	return errors.Join(errs...)
+}
+
+func adapterNamed(ads []agent.Adapter, name string) agent.Adapter {
+	for _, a := range ads {
+		if a.Name() == name {
+			return a
+		}
+	}
+	return nil
 }

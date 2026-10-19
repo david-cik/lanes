@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/state"
@@ -98,5 +99,55 @@ func TestUnlistedLaunchedAgentIsNamed(t *testing.T) {
 	}
 	if names["r1"] != "ABC-1 fix-it" || names["r2"] != "ABC-2" {
 		t.Fatalf("names %v", names)
+	}
+}
+
+// screens is tmux with one pane whose content the test sets.
+type screens struct {
+	panes
+	screen *string
+}
+
+func (s screens) Capture(string) (string, error) { return *s.screen, nil }
+
+type waiter struct{ lister }
+
+func (waiter) Name() string          { return "x" }
+func (waiter) WaitingText() []string { return []string{"Allow it?"} }
+
+func TestPaneStatusForToolsWithoutHooks(t *testing.T) {
+	store := state.Store{Dir: t.TempDir()}
+	store.Save(state.Record{ID: "r1", Tool: "x", Pane: "%1"})
+	screen := "thinking…"
+	clock := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	f := Fleet{Adapters: []agent.Adapter{waiter{}}, Store: store, Seen: &PaneMemory{},
+		Tmux: screens{panes{ps: []tmux.Pane{{ID: "%1", Agent: "r1"}}}, &screen},
+		Now:  func() time.Time { return clock }}
+	status := func() agent.Status {
+		got, _, err := f.Snapshot(context.Background())
+		if err != nil || len(got) != 1 {
+			t.Fatalf("%v %v", got, err)
+		}
+		return got[0].Status
+	}
+	for i, step := range []struct {
+		after  time.Duration // since the last look
+		screen string
+		want   agent.Status
+	}{
+		{0, "thinking…", agent.Working},           // first look
+		{time.Second, "thinking…", agent.Working}, // the same, but not for long
+		{2 * time.Second, "thinking… done", agent.Working},
+		{7 * time.Second, "thinking… done", agent.Idle}, // quiet a while
+		{time.Second, "Allow it? (y/n)", agent.Waiting},
+		{10 * time.Second, "Allow it? (y/n)", agent.Waiting},
+		{time.Second, "Allow it? (y/n) y\n1\n2\n3\n4\n5\n6\n7\n8", agent.Working}, // answered: scrolled up
+		{7 * time.Second, "Allow it? (y/n) y\n1\n2\n3\n4\n5\n6\n7\n8", agent.Idle},
+	} {
+		clock = clock.Add(step.after)
+		screen = step.screen
+		if got := status(); got != step.want {
+			t.Fatalf("step %d: %s, want %s", i, got, step.want)
+		}
 	}
 }
