@@ -18,7 +18,7 @@ type KeyAction struct {
 
 var KeyActions = []KeyAction{
 	{"start", "n", "Key to start an agent on a ticket?"},
-	{"new_ticket", "N", "Key to create a new ticket (drafted by Claude)?"},
+	{"new_ticket", "N", "Key to create a new ticket (drafted by an agent)?"},
 	{"send", "s", "Key to send text to an agent?"},
 	{"approve", "a", "Key to answer an agent's waiting request?"},
 	{"stop", "x", "Key to stop an agent?"},
@@ -30,7 +30,7 @@ var KeyActions = []KeyAction{
 	{"details", "d", "Key to show details under the board?"},
 	{"link", "t", "Key to move a session to a ticket?"},
 	{"suggest", "T", "Key to suggest tickets for unlinked sessions?"},
-	{"ask", ":", "Key to ask Claude?"},
+	{"ask", ":", "Key to ask an agent a question?"},
 	{"filter", "/", "Key to filter the board?"},
 	{"assignee", "u", "Key to show someone else's tickets?"},
 	{"refresh", "r", "Key to refresh?"},

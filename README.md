@@ -106,7 +106,7 @@ footer and `?` always show your keys; restart lanes to pick up changes.
 | `x` | stop the selected agent (its worktree and branch are kept) |
 | `t` | move a session to another ticket, or take it off its ticket (saved; matching by branch, `T` and `auto_link` won't put it back; an ended session that's taken off disappears from the board) |
 | `T` | suggest tickets: read unlinked Claude sessions' transcripts and propose a ticket for each |
-| `:` | ask Claude in plain words — "attach my CSP session to ABC-12", or on a ticket "find my old sessions for this ticket". It knows the ticket you're on, proposes one or more links (you confirm), asks back if unsure (you answer), or just answers |
+| `:` | ask an agent (`ask_agent`) in plain words — "attach my CSP session to ABC-12", or on a ticket "find my old sessions for this ticket". It knows the ticket you're on, proposes one or more links (you confirm), asks back if unsure (you answer), or just answers |
 | `d` | details: status, git, pull request, recent activity (or ticket details) |
 | `i` | the ticket — the selected one, or the selected agent's — on the whole panel: state, project, pull requests, agents, full description (scroll with `↑` `↓`); `o` / `p` / `n` from there |
 | `o` | open the ticket in the browser (on an agent: its ticket; an agent on no ticket opens its pull request) |

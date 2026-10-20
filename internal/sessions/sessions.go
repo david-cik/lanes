@@ -1,5 +1,5 @@
 // Package sessions finds agent sessions — running or recent — and links them to
-// tickets. It backs `lanes sessions` / `lanes link` and the panel's "ask Claude".
+// tickets. It backs `lanes sessions` / `lanes link` and the panel's ask (:).
 package sessions
 
 import (
