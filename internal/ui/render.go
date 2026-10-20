@@ -18,6 +18,7 @@ var (
 	warnBdg = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3")).Bold(true)
 	keyS    = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	stateC  = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
+	coordS  = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true) // the Coordinators group: a color no lane uses
 	plainS  = lipgloss.NewStyle()
 	italicF = lipgloss.NewStyle().Faint(true).Italic(true)
 )
@@ -153,7 +154,11 @@ func (m *Model) rowSegs(i int, st rowStats) []seg {
 		}
 		return out
 	case board.UnlinkedRow:
-		return m.laneHead(rail, strings.ToUpper(r.Text), st.count, faint)
+		head := faint
+		if r.Text == board.Coordinators {
+			head = coordS
+		}
+		return m.laneHead(rail, strings.ToUpper(r.Text), st.count, head)
 	case board.StateRow:
 		title := strings.ToUpper(r.Text)
 		if isPoolLane(r) {
@@ -334,6 +339,9 @@ func (m *Model) stats() []rowStats {
 			}
 		case board.UnlinkedRow:
 			team, lane, rail, railS, project = -1, i, "┆", faint, -1
+			if r.Text == board.Coordinators { // a lane of its own, in its own color
+				rail, railS = "┃", coordS
+			}
 		case board.TicketRow:
 			if team >= 0 && !r.Issue.Pool { // the team's count is its own tickets
 				st[team].count++
