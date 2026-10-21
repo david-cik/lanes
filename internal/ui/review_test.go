@@ -10,6 +10,7 @@ import (
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/agent/claude"
+	"github.com/david-cik/lanes/internal/launch"
 )
 
 // prRepo makes a clone "widget" under a repo root whose origin has pull request 12.
@@ -118,5 +119,18 @@ func TestReviewNeedsTheRightClone(t *testing.T) {
 	m.Update(cmd())
 	if m.modal != nil || !strings.Contains(m.notice, "is another repository's") {
 		t.Fatalf("%+v %q", m.modal, m.notice)
+	}
+}
+
+func TestReviewLeavesTheMainCheckoutAlone(t *testing.T) {
+	_, repo := prRepo(t)
+	path := filepath.Join(repo, ".worktrees", "review", "pr-12")
+	os.MkdirAll(path, 0o700) // a leftover folder, not a worktree
+	err := launch.ReviewWorktree(context.Background(), repo, 12, path)
+	if err == nil || !strings.Contains(err.Error(), "isn't a git worktree") {
+		t.Fatalf("%v", err)
+	}
+	if out, _ := exec.Command("git", "-C", repo, "log", "-1", "--format=%s").Output(); strings.TrimSpace(string(out)) != "init" {
+		t.Fatalf("the main checkout moved: %q", out)
 	}
 }

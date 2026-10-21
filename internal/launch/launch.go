@@ -323,6 +323,11 @@ func ReviewWorktree(ctx context.Context, repo string, n int, path string) error 
 		return err
 	}
 	if _, err := os.Stat(path); err == nil {
+		// Only a worktree of its own: in a plain folder, git would find the clone above it
+		// and move that checkout to the PR instead.
+		if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+			return fmt.Errorf("%s isn't a git worktree any more; remove it and review again", path)
+		}
 		if _, err := git(ctx, path, "checkout", "--quiet", "--detach", ref); err != nil {
 			return fmt.Errorf("%s has changes from an earlier review: %w", path, err)
 		}
