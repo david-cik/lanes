@@ -176,7 +176,7 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 				ctlReply(ev, map[string]any{"sent": true, "agent": a.ID})
 			}
 			return nil
-		}, m.confirmSent(a.ID, a.Tool, pane))
+		}, m.confirmSent(a.ID, a.Tool, pane, text))
 	case "read":
 		a, err := m.ctlFind(args.Agent)
 		if err != nil {

@@ -601,7 +601,7 @@ func (m *Model) sendSelected() tea.Cmd {
 			if text == "" {
 				return nil
 			}
-			return tea.Batch(func() tea.Msg { return noticeMsg{"sent", tm.SendText(pane, text)} }, m.confirmSent(id, tool, pane))
+			return tea.Batch(func() tea.Msg { return noticeMsg{"sent", tm.SendText(pane, text)} }, m.confirmSent(id, tool, pane, text))
 		}}
 	return nil
 }

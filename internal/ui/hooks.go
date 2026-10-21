@@ -590,9 +590,12 @@ type sentCheck struct {
 // sendRetries is how many more times lanes presses Enter for a message that didn't go.
 const sendRetries = 2
 
-func (m *Model) confirmSent(id, tool, pane string) tea.Cmd {
+func (m *Model) confirmSent(id, tool, pane, text string) tea.Cmd {
 	if _, hooks := m.adapter(tool).(agent.Hooker); !hooks {
 		return nil // nothing would say whether it went
+	}
+	if strings.HasPrefix(strings.TrimSpace(text), "/") {
+		return nil // a command (/model, /resume) may open a picker with no prompt submitted: Enter would choose in it
 	}
 	c := sentCheck{id, tool, pane, m.now(), 0}
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return c })
