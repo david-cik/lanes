@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/agent/claude"
 	"github.com/david-cik/lanes/internal/launch"
@@ -132,5 +134,20 @@ func TestReviewLeavesTheMainCheckoutAlone(t *testing.T) {
 	}
 	if out, _ := exec.Command("git", "-C", repo, "log", "-1", "--format=%s").Output(); strings.TrimSpace(string(out)) != "init" {
 		t.Fatalf("the main checkout moved: %q", out)
+	}
+}
+
+func TestPasteIntoTextBoxes(t *testing.T) {
+	m, _ := controlModel(t)
+	m.Update(key("R"))
+	m.Update(tea.PasteMsg{Content: "https://github.com/acme/widget/pull/12\n"})
+	if m.modal == nil || m.modal.text != "https://github.com/acme/widget/pull/12" {
+		t.Fatalf("%+v", m.modal)
+	}
+	m.modal = nil
+	m.Update(key("/"))
+	m.Update(tea.PasteMsg{Content: "fix it"})
+	if m.filter != "fix it" {
+		t.Fatalf("filter %q", m.filter)
 	}
 }

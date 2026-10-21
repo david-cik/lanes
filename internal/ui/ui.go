@@ -297,6 +297,12 @@ type spinTick struct{}
 // Update handles a message, then keeps the spinner turning while any agent works.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	mm, cmd := m.update(msg)
+	if m.scrollToCursor(m.boardHeight()) {
+		// A scrolled board is drawn afresh rather than shifted: the renderer shifts lines
+		// with terminal scrolling, which tmux passes on to the terminal as scrolling
+		// within the pane's margins, and some terminals (iTerm2) leave stale text behind.
+		cmd = tea.Batch(cmd, tea.ClearScreen)
+	}
 	if !m.spinOn && m.working() > 0 {
 		m.spinOn = true
 		cmd = tea.Batch(cmd, tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return spinTick{} }))
@@ -441,6 +447,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.click(tea.Mouse(msg))
 	case tea.MouseWheelMsg:
 		return m, m.wheel(tea.Mouse(msg))
+	case tea.PasteMsg:
+		m.paste(msg.Content)
 	case tea.KeyPressMsg:
 		if m.review != nil {
 			return m, m.reviewKey(msg)
@@ -658,12 +666,7 @@ func (m *Model) viewBoard(b *strings.Builder, body int) {
 		b.WriteString(strings.Repeat("\n", body-1))
 		return
 	}
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	}
-	if m.cursor >= m.offset+body {
-		m.offset = m.cursor - body + 1
-	}
+	m.scrollToCursor(body)
 	end := min(m.offset+body, len(m.rows))
 	stats := m.stats()
 	for i := m.offset; i < end; i++ {
@@ -721,4 +724,32 @@ func trunc(s string, n int) string {
 func firstLine(s string) string {
 	s, _, _ = strings.Cut(s, "\n")
 	return s
+}
+
+// scrollToCursor moves the board's view so the cursor is in it, and says whether it moved.
+func (m *Model) scrollToCursor(body int) bool {
+	was := m.offset
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if body > 0 && m.cursor >= m.offset+body {
+		m.offset = m.cursor - body + 1
+	}
+	return m.offset != was
+}
+
+// paste puts pasted text where typing would go: the open text box, a list's filter, or
+// the board's filter. Text boxes are one line, so line breaks become spaces.
+func (m *Model) paste(text string) {
+	text = strings.Join(strings.Fields(text), " ")
+	switch md := m.modal; {
+	case text == "":
+	case md != nil && md.input:
+		md.text += text
+	case md != nil && md.items != nil:
+		md.filter += text
+		md.pick = 0
+	case md == nil && m.typing:
+		m.setFilter(m.filter + text)
+	}
 }
