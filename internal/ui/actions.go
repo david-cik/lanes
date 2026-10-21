@@ -595,13 +595,13 @@ func (m *Model) sendSelected() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	tm, pane := m.opt.Tmux, a.Pane
+	tm, pane, id, tool := m.opt.Tmux, a.Pane, hookKey(a), a.Tool
 	m.modal = &modal{input: true, title: "Send to " + a.Name,
 		onInput: func(text string) tea.Cmd {
 			if text == "" {
 				return nil
 			}
-			return func() tea.Msg { return noticeMsg{"sent", tm.SendText(pane, text)} }
+			return tea.Batch(func() tea.Msg { return noticeMsg{"sent", tm.SendText(pane, text)} }, m.confirmSent(id, tool, pane))
 		}}
 	return nil
 }
@@ -639,7 +639,7 @@ func stop(rec state.Record, ad agent.Adapter, tm Tmux, store state.Store) error 
 	if ad != nil {
 		text, keys := ad.Stop()
 		if text != "" {
-			tm.SendText(rec.Pane, text)
+			tm.TypeText(rec.Pane, text)
 		}
 		if len(keys) > 0 {
 			tm.SendKeys(rec.Pane, keys...)

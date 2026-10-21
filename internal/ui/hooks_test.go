@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/david-cik/lanes/internal/agent"
 	"github.com/david-cik/lanes/internal/agent/claude"
@@ -413,5 +414,46 @@ func TestPaneStatusChangesNotify(t *testing.T) {
 	set(agent.Waiting)
 	if len(notes) != 2 || !strings.Contains(notes[1], "needs you") || m.readyCount() != 0 {
 		t.Fatalf("notes %v ready %d", notes, m.readyCount())
+	}
+}
+
+func TestUnsentMessageGetsAnotherEnter(t *testing.T) {
+	m, ft, _ := hookModel(t)
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	m.now = func() time.Time { return now }
+	event(m, "r1", "UserPromptSubmit")
+	event(m, "r1", "Stop") // idle, from an earlier turn
+	c := sentCheck{id: "r1", tool: "claude", pane: "%1", at: now.Add(time.Second)}
+	now = now.Add(3 * time.Second)
+	if cmd := m.checkSent(c); cmd == nil { // no prompt since: Enter again
+		t.Fatal("no retry")
+	}
+	runFirst := func(cmd tea.Cmd) {
+		if bm, ok := cmd().(tea.BatchMsg); ok {
+			bm[0]()
+		}
+	}
+	runFirst(m.checkSent(c))
+	if ft.log[len(ft.log)-1] != "keys %1 Enter" {
+		t.Fatalf("%v", ft.log)
+	}
+	c.tries = sendRetries
+	if cmd := m.checkSent(c); cmd != nil || !strings.Contains(m.notice, "press Enter in its pane") {
+		t.Fatalf("gave up? notice %q", m.notice)
+	}
+	// a dialog on screen: never Enter into it
+	c.tries = 0
+	permission(m, 9, "r1")
+	if cmd := m.checkSent(c); cmd != nil {
+		t.Fatal("pressed Enter into a permission dialog")
+	}
+	m.hooks["r1"].pending.reply(nil)
+	m.hooks["r1"].pending = nil
+	// the prompt went: nothing to do
+	event(m, "r1", "UserPromptSubmit")
+	event(m, "r1", "Stop") // idle again
+	c.tries = 0
+	if cmd := m.checkSent(c); cmd != nil {
+		t.Fatal("pressed Enter after the prompt went")
 	}
 }

@@ -169,14 +169,14 @@ func (m *Model) control(ev hook.Event) tea.Cmd {
 			st.log(m.now(), "sent by another agent: "+strings.Join(strings.Fields(args.Text), " "))
 		}
 		tm, pane, text := m.opt.Tmux, a.pane, args.Text
-		return func() tea.Msg {
+		return tea.Batch(func() tea.Msg {
 			if err := tm.SendText(pane, text); err != nil {
 				ctlError(ev, err)
 			} else {
 				ctlReply(ev, map[string]any{"sent": true, "agent": a.ID})
 			}
 			return nil
-		}
+		}, m.confirmSent(a.ID, a.Tool, pane))
 	case "read":
 		a, err := m.ctlFind(args.Agent)
 		if err != nil {

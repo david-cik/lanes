@@ -5,9 +5,11 @@ package tmux
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Pane options lanes sets; user options travel with the pane across swaps.
@@ -29,13 +31,16 @@ type Pane struct {
 	Dead        bool
 }
 
-func (c Client) run(args ...string) (string, error) {
+func (c Client) run(args ...string) (string, error) { return c.runIn(nil, args...) }
+
+// runIn runs tmux with stdin.
+func (c Client) runIn(stdin io.Reader, args ...string) (string, error) {
 	if c.Socket != "" {
 		args = append([]string{"-L", c.Socket}, args...)
 	}
 	var stderr bytes.Buffer
 	cmd := exec.Command("tmux", args...)
-	cmd.Stderr = &stderr
+	cmd.Stdin, cmd.Stderr = stdin, &stderr
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("tmux %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
@@ -107,8 +112,27 @@ func (c Client) Select(pane string) error {
 	return err
 }
 
-// SendText types text literally, then presses Enter.
+// SendText pastes text into pane as one bracketed paste, so the program there sees where
+// it ends, then presses Enter a moment later. Typed out and followed at once by Enter,
+// a long message looks like a paste to agents such as Claude Code, and the Enter can be
+// taken as part of it: a newline, leaving the message unsent.
 func (c Client) SendText(pane, text string) error {
+	buf := fmt.Sprintf("lanes-send-%s-%d", strings.TrimPrefix(pane, "%"), time.Now().UnixNano()) // one per send
+	if _, err := c.runIn(strings.NewReader(text), "load-buffer", "-b", buf, "-"); err != nil {
+		return err
+	}
+	if _, err := c.run("paste-buffer", "-p", "-d", "-b", buf, "-t", pane); err != nil {
+		return err
+	}
+	time.Sleep(sendSettle)
+	return c.SendKeys(pane, "Enter")
+}
+
+// sendSettle is how long SendText waits between the paste and Enter.
+const sendSettle = 200 * time.Millisecond
+
+// TypeText types text into pane, then presses Enter: for short commands (/exit).
+func (c Client) TypeText(pane, text string) error {
 	if _, err := c.run("send-keys", "-t", pane, "-l", "--", text); err != nil {
 		return err
 	}

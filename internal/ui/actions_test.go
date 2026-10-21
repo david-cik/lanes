@@ -43,6 +43,7 @@ func (f *fakeTmux) Swap(a, b string) error {
 func (f *fakeTmux) Join(s, d string, _ int) error { return f.rec("join " + s + " " + d) }
 func (f *fakeTmux) Select(p string) error         { return f.rec("select " + p) }
 func (f *fakeTmux) SendText(p, t string) error    { return f.rec("text " + p + " " + t) }
+func (f *fakeTmux) TypeText(p, t string) error    { return f.rec("text " + p + " " + t) }
 func (f *fakeTmux) SendKeys(p string, k ...string) error {
 	return f.rec("keys " + p + " " + strings.Join(k, ","))
 }

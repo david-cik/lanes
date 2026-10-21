@@ -31,6 +31,7 @@ type hookState struct {
 	ready    bool       // finished a turn while you weren't looking; cleared when you look
 	overlap  string     // a ticket whose agent already changed a file this one is changing
 	activity []activity // newest last, at most activityMax
+	prompted time.Time  // when the tool last said a prompt was submitted
 }
 
 type activity struct {
@@ -102,6 +103,9 @@ func (m *Model) hook(ev hook.Event) tea.Cmd {
 		return nil
 	}
 	st.trust = false
+	if ev.Event == "UserPromptSubmit" {
+		st.prompted = m.now()
+	}
 	m.learnSession(ev.Agent, he.SessionID)
 	// Progress, or a new question, means an earlier request was answered elsewhere
 	// (in the pane). A later "waiting" notification about the same prompt is not progress.
@@ -573,4 +577,46 @@ func (m *Model) learnSession(id, session string) {
 		return
 	}
 	m.live[i].SessionID = session
+}
+
+// sentCheck is a look, a moment after lanes sent an agent a message, at whether the agent
+// took it.
+type sentCheck struct {
+	id, tool, pane string
+	at             time.Time
+	tries          int
+}
+
+// sendRetries is how many more times lanes presses Enter for a message that didn't go.
+const sendRetries = 2
+
+func (m *Model) confirmSent(id, tool, pane string) tea.Cmd {
+	if _, hooks := m.adapter(tool).(agent.Hooker); !hooks {
+		return nil // nothing would say whether it went
+	}
+	c := sentCheck{id, tool, pane, m.now(), 0}
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return c })
+}
+
+// checkSent presses Enter again if the agent didn't take the message: its tool said no
+// prompt was submitted since, and it sits idle. An Enter can land as part of the message
+// (a newline), leaving it unsent in the agent's input box; another Enter on an empty box
+// does nothing. Only when idle: a busy agent has queued the message, and an agent showing
+// a dialog (a permission, a question, folder trust) would take Enter as its answer.
+func (m *Model) checkSent(c sentCheck) tea.Cmd {
+	st := m.hooks[c.id]
+	if st == nil || st.prompted.After(c.at) || st.status != agent.Idle || st.pending != nil || st.trust {
+		return nil
+	}
+	if !slices.ContainsFunc(m.live, func(r state.Record) bool { return r.Pane == c.pane }) {
+		return nil // stopped meanwhile
+	}
+	if c.tries >= sendRetries {
+		m.say("", fmt.Errorf("%s hasn't started on the message; press Enter in its pane", m.whoIs(c.id)))
+		return nil
+	}
+	c.tries++
+	tm := m.opt.Tmux
+	return tea.Batch(func() tea.Msg { tm.SendKeys(c.pane, "Enter"); return nil },
+		tea.Tick(2*time.Second, func(time.Time) tea.Msg { return c }))
 }

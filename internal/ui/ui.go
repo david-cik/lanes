@@ -60,6 +60,7 @@ type Tmux interface {
 	Join(src, dst string, percent int) error
 	Select(pane string) error
 	SendText(pane, text string) error
+	TypeText(pane, text string) error
 	SendKeys(pane string, keys ...string) error
 	KillSession(name string) error
 	HasSession(name string) bool
@@ -401,6 +402,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.hook(hook.Event(msg)), m.waitHook())
 	case trustMsg:
 		return m, m.trusted(msg)
+	case sentCheck:
+		return m, m.checkSent(msg)
 	case reviewFoundMsg:
 		return m, m.confirmReview(msg, nil)
 	case ctlTimeoutMsg:
