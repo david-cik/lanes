@@ -66,7 +66,8 @@ type Readers struct {
 	Git  func(ctx context.Context, dir string) (gitinfo.Info, error)
 	PR   func(ctx context.Context, dir, branch string) (*gh.PR, error)
 	Open func(url string) error
-	Ask  func(ctx context.Context, system, prompt string) (string, error) // one-shot Claude
+	Ask  func(ctx context.Context, system, prompt string) (string, error) // one-shot question to ask_agent
+	GH   gh.Runner                                                        // gh, for looking up a pull request to review; nil = the real one
 }
 
 func defaultReaders() Readers {

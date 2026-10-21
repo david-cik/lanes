@@ -178,6 +178,7 @@ type Plan struct {
 	ResumeFrom string // tool session to fork (adopt)
 	Name       string // the agent's name; "" = from the ticket
 	Project    string // the project a coordinator looks after
+	Review     string // the pull request a review agent reviews
 }
 
 // FolderPlan starts a new agent for ticket d in dir as it is: no worktree or branch is
@@ -218,7 +219,7 @@ func Run(ctx context.Context, p Plan, tm Tmux, store state.Store) (state.Record,
 		Worktree: p.Worktree, Branch: p.Branch, CreatedAt: time.Now().UTC(), AdoptedFrom: p.ResumeFrom,
 	}
 	rec.Name = cmp.Or(p.Name, strings.TrimSpace(p.Ticket.Key+" "+Slug(p.Ticket.Title)))
-	rec.Project = p.Project
+	rec.Project, rec.Review = p.Project, p.Review
 	cmd := p.Adapter.Command(agent.LaunchSpec{
 		Name: rec.Name, Prompt: p.Prompt, Args: p.Args, HookBin: p.HookBin,
 		ResumeFrom: p.ResumeFrom,
@@ -282,4 +283,56 @@ func NewPlan(d tracker.IssueDetail, repo Repo, a agent.Adapter, cfg config.Confi
 		Worktree: Render(cfg.WorktreeTemplate, vars),
 		Prompt:   Render(cfg.PromptTemplate, vars),
 	}
+}
+
+// FindRepo is the clone of owner/name among repos: the one by that name, or, if several
+// have it, the one whose origin is that repository.
+func FindRepo(ctx context.Context, repos []Repo, full string) (Repo, error) {
+	_, name, _ := strings.Cut(full, "/")
+	var hits []Repo
+	for _, r := range repos {
+		if strings.EqualFold(r.Name, name) {
+			hits = append(hits, r)
+		}
+	}
+	var others []string
+	for _, r := range hits {
+		url, err := git(ctx, r.Path, "remote", "get-url", "origin")
+		switch {
+		case err != nil && len(hits) == 1: // no origin to tell by: the name will do
+			return r, nil
+		case err != nil:
+		case strings.HasSuffix(strings.ToLower(strings.TrimSuffix(url, ".git")), "/"+strings.ToLower(full)) ||
+			strings.HasSuffix(strings.ToLower(strings.TrimSuffix(url, ".git")), ":"+strings.ToLower(full)):
+			return r, nil
+		default:
+			others = append(others, r.Path+" ("+url+")")
+		}
+	}
+	if len(others) > 0 { // same name, another repository: its PR numbers mean other PRs
+		return Repo{}, fmt.Errorf("no clone of %s under repo_roots (%s is another repository's)", full, strings.Join(others, ", "))
+	}
+	return Repo{}, fmt.Errorf("no clone of %s under repo_roots: clone it there to review its pull requests", full)
+}
+
+// ReviewWorktree checks out pull request n of the repo at its current head, detached,
+// in path (again, if path already has an earlier look at it).
+func ReviewWorktree(ctx context.Context, repo string, n int, path string) error {
+	ref := fmt.Sprintf("refs/lanes/pr-%d", n)
+	if _, err := git(ctx, repo, "fetch", "--quiet", "--force", "origin", fmt.Sprintf("pull/%d/head:%s", n, ref)); err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		if _, err := git(ctx, path, "checkout", "--quiet", "--detach", ref); err != nil {
+			return fmt.Errorf("%s has changes from an earlier review: %w", path, err)
+		}
+		return nil
+	}
+	_, err := git(ctx, repo, "worktree", "add", "--quiet", "--detach", path, ref)
+	return err
+}
+
+// ReviewPath is where pull request n of repo is checked out for review.
+func ReviewPath(repo string, n int) string {
+	return filepath.Join(repo, ".worktrees", "review", fmt.Sprintf("pr-%d", n))
 }

@@ -85,6 +85,7 @@ var helpSections = []helpSection{
 		{"@stop", "stop the agent (worktree is kept)"},
 		{"@adopt", "adopt a session lanes didn't start"},
 		{"@coordinator", "the project's coordinator: an agent that runs the others"},
+		{"@review", "review a pull request (paste its URL or owner/repo#N)"},
 	}},
 	{"Sessions on tickets", [][2]string{
 		{"@link", "move a session to a ticket, or take it off"},

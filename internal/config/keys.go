@@ -24,6 +24,7 @@ var KeyActions = []KeyAction{
 	{"stop", "x", "Key to stop an agent?"},
 	{"adopt", "A", "Key to adopt a session lanes didn't start?"},
 	{"coordinator", "C", "Key to show or start a project's coordinator?"},
+	{"review", "R", "Key to start a review agent on a pull request?"},
 	{"info", "i", "Key to show a ticket's card?"},
 	{"open", "o", "Key to open a ticket in the browser?"},
 	{"prs", "p", "Key to list a ticket's pull requests?"},

@@ -19,6 +19,7 @@ var (
 	keyS    = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	stateC  = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
 	coordS  = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true) // the Coordinators group: a color no lane uses
+	reviewS = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true) // the Reviews group: likewise
 	plainS  = lipgloss.NewStyle()
 	italicF = lipgloss.NewStyle().Faint(true).Italic(true)
 )
@@ -155,8 +156,11 @@ func (m *Model) rowSegs(i int, st rowStats) []seg {
 		return out
 	case board.UnlinkedRow:
 		head := faint
-		if r.Text == board.Coordinators {
+		switch r.Text {
+		case board.Coordinators:
 			head = coordS
+		case board.Reviews:
+			head = reviewS
 		}
 		return m.laneHead(rail, strings.ToUpper(r.Text), st.count, head)
 	case board.StateRow:
@@ -215,6 +219,9 @@ func (m *Model) agentSegs(r board.Row, last bool, cont string) []seg {
 	shown := a.Name
 	if a.Project != "" { // under Coordinators: the project says it all
 		shown = a.Project
+	}
+	if a.Review != "" { // under Reviews: the pull request
+		shown = reviewOf(a.Review)
 	}
 	if r.Level > 1 && a.TicketKey != "" { // under its ticket: the key is already on the line above
 		if t := strings.TrimSpace(strings.TrimPrefix(a.Name, a.TicketKey)); t != a.Name {
@@ -339,8 +346,11 @@ func (m *Model) stats() []rowStats {
 			}
 		case board.UnlinkedRow:
 			team, lane, rail, railS, project = -1, i, "┆", faint, -1
-			if r.Text == board.Coordinators { // a lane of its own, in its own color
+			switch r.Text { // a lane of its own, in its own color
+			case board.Coordinators:
 				rail, railS = "┃", coordS
+			case board.Reviews:
+				rail, railS = "┃", reviewS
 			}
 		case board.TicketRow:
 			if team >= 0 && !r.Issue.Pool { // the team's count is its own tickets

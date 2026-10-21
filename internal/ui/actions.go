@@ -577,7 +577,9 @@ func (m *Model) launched(msg launchedMsg) tea.Cmd {
 		}
 		ctlReply(msg.ctl, ans)
 	}
-	if msg.rec.Project != "" {
+	if msg.rec.Review != "" {
+		m.say(fmt.Sprintf("started %s reviewing %s in %s", msg.rec.Tool, reviewOf(msg.rec.Review), home(msg.rec.Worktree)), nil)
+	} else if msg.rec.Project != "" {
 		m.say(fmt.Sprintf("started the coordinator of %s in %s", msg.rec.Project, home(msg.rec.Worktree)), nil)
 	} else {
 		m.say(fmt.Sprintf("started %s on %s in %s", msg.rec.Tool, msg.rec.TicketKey, home(msg.rec.Worktree)), nil)

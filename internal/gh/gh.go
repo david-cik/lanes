@@ -112,3 +112,40 @@ func firstLine(s string) string {
 	s, _, _ = strings.Cut(s, "\n")
 	return s
 }
+
+// Ref is a pull request someone pasted, looked up.
+type Ref struct {
+	Repo   string // owner/name of the repository it merges into
+	Number int
+	Title  string
+	URL    string
+}
+
+// Lookup finds a pull request from its URL or "owner/name#N".
+func Lookup(ctx context.Context, run Runner, ref string) (Ref, error) {
+	ref = strings.TrimSpace(ref)
+	args := []string{"pr", "view", ref, "--json", "number,title,url"}
+	if repo, n, ok := strings.Cut(ref, "#"); ok && strings.Count(repo, "/") == 1 && !strings.Contains(ref, "://") {
+		args = []string{"pr", "view", n, "--repo", repo, "--json", "number,title,url"}
+	} else if !strings.HasPrefix(ref, "https://") {
+		return Ref{}, fmt.Errorf("%q isn't a pull request: paste its URL or owner/repo#N", ref)
+	}
+	out, err := run(ctx, "", args...)
+	if errors.Is(err, exec.ErrNotFound) {
+		return Ref{}, Unavailable{"gh is not installed"}
+	}
+	if err != nil {
+		return Ref{}, fmt.Errorf("gh: %s", firstLine(err.Error()))
+	}
+	var r Ref
+	if err := json.Unmarshal(out, &r); err != nil {
+		return Ref{}, err
+	}
+	// https://github.com/owner/name/pull/N
+	parts := strings.Split(strings.TrimPrefix(r.URL, "https://"), "/")
+	if len(parts) < 5 || parts[3] != "pull" {
+		return Ref{}, fmt.Errorf("unexpected pull request URL %q", r.URL)
+	}
+	r.Repo = parts[1] + "/" + parts[2]
+	return r, nil
+}

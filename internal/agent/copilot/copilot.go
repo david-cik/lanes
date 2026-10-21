@@ -206,3 +206,16 @@ func uuid() string {
 	b[8] = b[8]&0x3f | 0x80 // RFC 4122 variant
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
+
+// RuleArgs turns command prefixes into shell rules ("=" keeps the variadic flags from
+// taking what follows).
+func (*Adapter) RuleArgs(allow, deny []string) []string {
+	var args []string
+	for _, c := range allow {
+		args = append(args, "--allow-tool=shell("+c+":*)")
+	}
+	for _, c := range deny {
+		args = append(args, "--deny-tool=shell("+c+":*)")
+	}
+	return args
+}

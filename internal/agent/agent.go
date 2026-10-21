@@ -32,6 +32,7 @@ type Agent struct {
 	RecordID  string // lanes launch record, for launched agents
 	Pane      string // tmux pane, for launched agents
 	Project   string // the project it coordinates, for a coordinator
+	Review    string // the pull request (URL) it reviews, for a review agent
 }
 
 // LaunchSpec is what lanes asks an adapter to start.
@@ -107,6 +108,18 @@ type Msg struct {
 // needs the user; lanes then reads their status from their pane.
 type Waiter interface {
 	WaitingText() []string
+}
+
+// Ruler is implemented by adapters whose tool takes rules for shell commands: the ones
+// starting with an allow prefix run without asking, a deny prefix never runs.
+type Ruler interface {
+	RuleArgs(allow, deny []string) []string
+}
+
+// Isolator is implemented by adapters whose tool can ignore the settings a folder brings
+// with it (hooks that run commands, tools, permissions), for code someone else wrote.
+type Isolator interface {
+	IsolateArgs() []string
 }
 
 // Truster is implemented by adapters whose tool asks before working in a folder it

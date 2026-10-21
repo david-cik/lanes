@@ -69,6 +69,7 @@ type ctlAgent struct {
 	Recent   []string  `json:"recent,omitempty"` // latest activity, newest last
 	Ticket   string    `json:"ticket,omitempty"`
 	Project  string    `json:"coordinates,omitempty"` // the project, for a project's coordinator
+	Review   string    `json:"review,omitempty"`      // the pull request, for a review agent
 	ended    bool
 	session  string
 	pane     string
@@ -309,7 +310,7 @@ func (m *Model) ctlBoard(project string) ([]ctlTicket, []ctlAgent) {
 
 func (m *Model) ctlAgentOf(a *agent.Agent) ctlAgent {
 	c := ctlAgent{ID: hookKey(a), Name: a.Name, Tool: a.Tool, Status: string(a.Status), Since: a.Since, Lanes: a.RecordID != "",
-		Cwd: a.Cwd, Branch: a.Branch, Ticket: a.TicketKey, Project: a.Project, ended: a.Ended, session: a.ID, pane: a.Pane, recordID: a.RecordID}
+		Cwd: a.Cwd, Branch: a.Branch, Ticket: a.TicketKey, Project: a.Project, Review: a.Review, ended: a.Ended, session: a.ID, pane: a.Pane, recordID: a.RecordID}
 	if a.Ended {
 		c.Status = "ended"
 	}

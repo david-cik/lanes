@@ -33,6 +33,9 @@ type Row struct {
 // Coordinators is the group, after the teams, of agents looking after a project.
 const Coordinators = "Coordinators"
 
+// Reviews is the group of agents reviewing a pull request.
+const Reviews = "Reviews"
+
 // PoolLane is the lane, first in each team, of unassigned tickets ready to pick up.
 const PoolLane = "Up for grabs"
 
@@ -50,7 +53,7 @@ var stateRank = map[string]int{"triage": 0, "backlog": 1, "unstarted": 2, "start
 func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stateOrder map[string][]string) []Row {
 	pre := link.Prefixes(issues)
 	byKey := map[string][]*agent.Agent{}
-	var unlinked, coordinators []*agent.Agent
+	var unlinked, coordinators, reviews []*agent.Agent
 	open := map[string]bool{}
 	for _, i := range issues {
 		open[i.Key] = true
@@ -60,6 +63,11 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 		if a.Project != "" {
 			a.TicketKey = ""
 			coordinators = append(coordinators, a)
+			continue
+		}
+		if a.Review != "" {
+			a.TicketKey = ""
+			reviews = append(reviews, a)
 			continue
 		}
 		if a.TicketKey == "" {
@@ -109,7 +117,7 @@ func Build(issues []tracker.Issue, agents []agent.Agent, links state.Links, stat
 	for _, g := range []struct {
 		name   string
 		agents []*agent.Agent
-	}{{Coordinators, coordinators}, {"Unlinked", unlinked}} {
+	}{{Coordinators, coordinators}, {Reviews, reviews}, {"Unlinked", unlinked}} {
 		if len(g.agents) > 0 {
 			rows = append(rows, Row{Kind: UnlinkedRow, Text: g.name})
 			for _, a := range g.agents {

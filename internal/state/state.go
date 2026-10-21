@@ -34,6 +34,8 @@ type Record struct {
 	// Project is set on a project's coordinator, an agent on no ticket that looks after
 	// the project's tickets and their agents.
 	Project string `json:"project,omitempty"`
+	// Review is the pull request (URL) a review agent is reviewing.
+	Review string `json:"review,omitempty"`
 }
 
 // Session is the tmux session that is this agent's home.

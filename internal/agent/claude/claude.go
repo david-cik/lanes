@@ -188,3 +188,27 @@ func status(s string) agent.Status {
 	}
 	return agent.Unknown
 }
+
+// RuleArgs turns command prefixes into Bash rules. "=" keeps these variadic flags from
+// taking the prompt after them as a value.
+func (*Adapter) RuleArgs(allow, deny []string) []string {
+	rules := func(cmds []string) string {
+		var out []string
+		for _, c := range cmds {
+			out = append(out, "Bash("+c+":*)")
+		}
+		return strings.Join(out, ",")
+	}
+	var args []string
+	if len(allow) > 0 {
+		args = append(args, "--allowedTools="+rules(allow))
+	}
+	if len(deny) > 0 {
+		args = append(args, "--disallowedTools="+rules(deny))
+	}
+	return args
+}
+
+// IsolateArgs: only the user's own settings load (lanes' hooks come with --settings and
+// still do); the folder's .claude/settings*.json, and the hooks in them, don't.
+func (*Adapter) IsolateArgs() []string { return []string{"--setting-sources=user"} }

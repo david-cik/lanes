@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"testing"
 )
 
@@ -45,5 +46,29 @@ func TestNoPRAndUnavailable(t *testing.T) {
 	}
 	if pr, err := Find(ctx, runner("", nil), "/r", ""); pr != nil || err != nil {
 		t.Fatal("detached HEAD should mean no PR")
+	}
+}
+
+func TestLookup(t *testing.T) {
+	var got []string
+	run := func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		got = args
+		return []byte(`{"number":12,"title":"Fix it","url":"https://github.com/acme/widget/pull/12"}`), nil
+	}
+	for _, ref := range []string{"acme/widget#12", "https://github.com/acme/widget/pull/12"} {
+		r, err := Lookup(context.Background(), run, ref)
+		if err != nil || r.Repo != "acme/widget" || r.Number != 12 || r.Title != "Fix it" {
+			t.Fatalf("%s: %+v %v", ref, r, err)
+		}
+	}
+	if !slices.Contains(got, "https://github.com/acme/widget/pull/12") {
+		t.Fatalf("%q", got)
+	}
+	Lookup(context.Background(), run, "acme/widget#12")
+	if !slices.Equal(got[:5], []string{"pr", "view", "12", "--repo", "acme/widget"}) {
+		t.Fatalf("%q", got)
+	}
+	if _, err := Lookup(context.Background(), run, "fix the thing"); err == nil {
+		t.Fatal("not a PR")
 	}
 }

@@ -101,6 +101,7 @@ footer and `?` always show your keys; restart lanes to pick up changes.
 | `n` | start an agent on the selected ticket |
 | `A` | adopt a session lanes didn't start: fork it into a lanes pane (the original keeps running, off the board); on an ended session, resume it |
 | `C` | the project's coordinator (on a project, or a ticket in one): show it, or start one — see [below](#a-projects-coordinator-c) |
+| `R` | review a pull request: paste its URL or `owner/repo#N`; a review agent starts in a worktree at its head — see [below](#reviewing-pull-requests-r) |
 | `a` | answer the selected (or oldest) waiting permission request |
 | `s` | send text to the selected agent |
 | `x` | stop the selected agent (its worktree and branch are kept) |
@@ -263,6 +264,36 @@ can't skip those questions. It answers prompts of, and stops, only its own proje
 take over the right pane; it starts in the launch folder if one is set, else in a new
 worktree in the ticket's repo (the coordinator names the repo when lanes can't tell).
 
+### Reviewing pull requests (`R`)
+
+`R` asks for a pull request (its URL, or `owner/repo#N`) and starts a review agent on it:
+in a new worktree at the PR's head, in its repository's clone under `repo_roots`, with
+`review.prompt` as its first prompt. Review agents are listed under **Reviews**; `R` on a
+PR that's being reviewed shows the agent on it. The start screen shows the PR's title and
+what the agent may post, and `t` picks another tool.
+
+```toml
+[review]
+agent = ""        # the tool reviews run in ("" = default_agent)
+prompt = "…"      # its first prompt: {url}, {repo} (owner/name), {number}, {title}, {post}
+post = "ask"      # "ask": posts only after you say so · "never": drafts, you post · "auto": posts when done
+```
+
+The default prompt asks for bugs, risky changes, security problems, and missing tests,
+with style nits kept apart. `{post}` is what `review.post` allows; for Claude and Copilot
+it's also set as tool rules: `never` forbids the usual ways to post or change the PR
+(`gh pr review`/`comment`/`edit`/`merge`/`close`, `gh issue comment`, `gh api`; not every
+way, so it's best effort), and `auto` lets exactly `gh pr review <n> --repo <repo>
+--comment` run without asking (not `--approve`). The worktree is kept, and checked out
+again at the PR's latest head the next time you review it.
+
+A pull request is code you haven't vetted yet, and a repository can bring settings that
+run commands (Claude's `.claude/settings.json` hooks, for one) once you trust its folder.
+Claude review agents start with `--setting-sources=user`, so only your own settings load
+(lanes' hooks still do); with other tools the start screen warns you. The PR's own
+instructions (`CLAUDE.md`, `AGENTS.md`) still reach the agent as text, and the posting rules
+are what limit what it can do with them.
+
 ### Letting one agent coordinate others
 
 A running panel also takes requests from other programs, so one agent can look after a
@@ -348,6 +379,9 @@ args = []                     # extra arguments, e.g. ["--model", "sonnet"]
 
 [keys]                        # board keys you changed (lanes keys writes this; --reset removes it)
 start = "n"                   # one character each; names as in `lanes keys`, e.g. send, stop, approve, quit
+
+[review]                      # pull request reviews (R); see "Reviewing pull requests"
+post = "ask"                  # "ask", "never", or "auto"
 
 [coordinator]                 # what a project's coordinator (C) may do; see "A project's coordinator"
 agent = ""                    # the tool it runs in ("" = default_agent if it can)

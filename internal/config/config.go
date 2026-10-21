@@ -51,6 +51,32 @@ type Config struct {
 	AskAgent    string                 `toml:"ask_agent"` // the tool that answers : and drafts N tickets; "" = the default agent if it can
 	Coordinator CoordinatorConfig      `toml:"coordinator"`
 	Keys        map[string]string      `toml:"keys"` // board action → key; see KeyActions
+	Review      ReviewConfig           `toml:"review"`
+}
+
+// ReviewConfig is how a pull request review agent (R) works.
+type ReviewConfig struct {
+	Agent string `toml:"agent"` // the tool it runs in; "" = the default agent
+	// Prompt is its first prompt: {url}, {repo} (owner/name), {number}, {title}, and
+	// {post} (what it may post, from Post) are filled in.
+	Prompt string `toml:"prompt"`
+	// Post: "ask" (it posts only after the user says yes), "never" (it drafts; the user
+	// posts), "auto" (it posts its review when done).
+	Post string `toml:"post"`
+}
+
+// DefaultReviewPrompt is the review agent's first prompt unless review.prompt is set.
+const DefaultReviewPrompt = `Review the pull request {url} ({repo}#{number}: {title}). Its head is checked out here.
+
+Read the change (gh pr view {number} --repo {repo}, gh pr diff {number} --repo {repo}) and the code around it. Look for bugs, risky changes, security problems, and missing tests; say how sure you are of each, and keep style nits apart from real problems.
+
+{post}`
+
+// ReviewPost is what a review agent is told it may post, by review.post.
+var ReviewPost = map[string]string{
+	"ask":   "Write your review here first. Post it to GitHub (gh pr review) only after the user says to.",
+	"never": "Don't post anything to GitHub: write your review here, and the user will post what they want.",
+	"auto":  "When you're done, post your review to GitHub as a comment review, with exactly: gh pr review {number} --repo {repo} --comment --body-file <file>.",
 }
 
 // CoordinatorConfig is what a project's coordinator may do without the panel.
@@ -108,6 +134,7 @@ func Default() Config {
 		GroupByProject:   true,
 		DimInactive:      true,
 		Coordinator:      CoordinatorConfig{Start: "ask", Approve: "ask"},
+		Review:           ReviewConfig{Prompt: DefaultReviewPrompt, Post: "ask"},
 	}
 }
 
@@ -151,6 +178,7 @@ func Load(path string) (Config, error) {
 	for key, v := range map[string][2]string{
 		"coordinator.start":   {c.Coordinator.Start, "ask auto panel"},
 		"coordinator.approve": {c.Coordinator.Approve, "ask auto off"},
+		"review.post":         {c.Review.Post, "ask never auto"},
 	} {
 		if !slices.Contains(strings.Fields(v[1]), v[0]) {
 			return c, fmt.Errorf("%s: %s must be one of %s, got %q", path, key, strings.Join(strings.Fields(v[1]), ", "), v[0])

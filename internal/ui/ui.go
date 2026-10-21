@@ -395,6 +395,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.hook(hook.Event(msg)), m.waitHook())
 	case trustMsg:
 		return m, m.trusted(msg)
+	case reviewFoundMsg:
+		return m, m.confirmReview(msg, nil)
 	case ctlTimeoutMsg:
 		m.ctlTimeout(msg.id)
 	case detailTick:
@@ -558,6 +560,8 @@ func (m *Model) do(action string) tea.Cmd {
 		return m.adoptSelected()
 	case "coordinator":
 		return m.startCoordinator()
+	case "review":
+		return m.reviewPR()
 	case "suggest":
 		return m.suggestLinks()
 	case "ask":

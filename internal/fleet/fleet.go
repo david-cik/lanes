@@ -172,7 +172,7 @@ func (f Fleet) Snapshot(ctx context.Context) ([]agent.Agent, []state.Record, err
 	for _, r := range recs {
 		a := agent.Agent{
 			ID: r.SessionID, Tool: r.Tool, Name: recordName(r), Cwd: r.Worktree, Status: agent.Unknown,
-			Since: r.CreatedAt, TicketKey: r.TicketKey, RecordID: r.ID, Pane: r.Pane, Project: r.Project,
+			Since: r.CreatedAt, TicketKey: r.TicketKey, RecordID: r.ID, Pane: r.Pane, Project: r.Project, Review: r.Review,
 		}
 		if r.SessionID != "" {
 			k := state.LinkKey(r.Tool, r.SessionID)
