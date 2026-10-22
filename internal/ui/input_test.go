@@ -59,14 +59,24 @@ func TestClickingTheBoardStaysOnTheBoard(t *testing.T) {
 	}
 }
 
-func TestWheelMovesAndFooterClickPresses(t *testing.T) {
-	m, _ := controlModel(t)
+func TestWheelScrollsAndFooterClickPresses(t *testing.T) {
+	m, ft := controlModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 5}) // a board 3 rows tall
 	m.cursor = 0
-	m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
-	m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
-	if m.cursor != 2 {
-		t.Fatalf("cursor %d", m.cursor)
+	before := len(ft.log)
+	_, cmd := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if m.cursor != 0 || m.offset == 0 || cmd == nil || len(ft.log) != before {
+		t.Fatalf("wheel should scroll the view only: cursor %d offset %d log %v", m.cursor, m.offset, ft.log[before:])
 	}
+	view(m) // drawing keeps the scrolled view
+	if m.offset == 0 {
+		t.Fatal("the view snapped back to the cursor")
+	}
+	m.Update(key("j")) // a key brings it back to the selection
+	if m.cursor != 1 || m.offset > m.cursor {
+		t.Fatalf("cursor %d offset %d", m.cursor, m.offset)
+	}
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	footer := strings.Split(view(m), "\n")[m.height-1]
 	x := strings.Index(footer, "⟨?⟩ keys")
 	if x < 0 {

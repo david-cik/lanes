@@ -15,6 +15,7 @@ import (
 // moveTo puts the cursor on row i (clamped); the right pane follows the selection.
 func (m *Model) moveTo(i int) tea.Cmd {
 	m.cursor = max(min(i, len(m.rows)-1), 0)
+	m.free = false // the view follows the cursor again
 	if a := m.previewable(); a != nil {
 		m.show(a.RecordID, a.Pane)
 	}
@@ -190,14 +191,34 @@ func (m *Model) click(ms tea.Mouse) tea.Cmd {
 	return nil
 }
 
+// wheel scrolls lists: in a modal or the review screen, the wheel moves through it as the
+// arrows do; on the board it scrolls the view only, leaving the selection (and the agent
+// shown on the right) as it is, so scrolling past agents doesn't mark them seen.
 func (m *Model) wheel(ms tea.Mouse) tea.Cmd {
 	step := map[tea.MouseButton]string{tea.MouseWheelUp: "up", tea.MouseWheelDown: "down"}[ms.Button]
 	if step == "" || m.review != nil {
 		return nil
 	}
-	_, cmd := m.Update(keyOf(step))
-	return cmd
+	if m.modal != nil || m.typing {
+		_, cmd := m.Update(keyOf(step))
+		return cmd
+	}
+	body := m.boardHeight()
+	was := m.offset
+	delta := wheelStep
+	if step == "up" {
+		delta = -wheelStep
+	}
+	m.offset = max(min(m.offset+delta, len(m.rows)-body), 0)
+	if m.offset == was {
+		return nil
+	}
+	m.free = true
+	return tea.ClearScreen // drawn afresh, not shifted (see Update)
 }
+
+// wheelStep is how many rows one wheel notch scrolls the board.
+const wheelStep = 3
 
 func (m *Model) footerClick(x int) tea.Cmd {
 	if m.typing || m.notice != "" || m.issueErr != nil || m.agentErr != nil {

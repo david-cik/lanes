@@ -118,6 +118,7 @@ type Model struct {
 	warned      map[string]bool     // overlap warnings already given (agent, other agent, file)
 	teamWork    map[string][2]int   // per team: agents working, waiting (for folded headers)
 	typing      bool                // the filter is being typed
+	free        bool                // the view was scrolled with the wheel, away from the cursor
 	width       int
 	height      int
 	updated     time.Time
@@ -474,6 +475,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) boardKey(k tea.KeyPressMsg) tea.Cmd {
 	m.notice = ""
+	m.free = false // a key brings the view back to the selection
 	if m.typing {
 		if cmd, ok := m.filterKey(k); ok {
 			return cmd
@@ -731,6 +733,10 @@ func firstLine(s string) string {
 
 // scrollToCursor moves the board's view so the cursor is in it, and says whether it moved.
 func (m *Model) scrollToCursor(body int) bool {
+	if m.free { // scrolled by the wheel: stays put until the cursor moves
+		m.offset = max(min(m.offset, len(m.rows)-body), 0)
+		return false
+	}
 	was := m.offset
 	if m.cursor < m.offset {
 		m.offset = m.cursor
