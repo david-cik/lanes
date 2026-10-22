@@ -191,9 +191,10 @@ func (m *Model) click(ms tea.Mouse) tea.Cmd {
 	return nil
 }
 
-// wheel scrolls lists: in a modal or the review screen, the wheel moves through it as the
+// wheel scrolls: in a modal, or while typing a filter, it moves through the list as the
 // arrows do; on the board it scrolls the view only, leaving the selection (and the agent
-// shown on the right) as it is, so scrolling past agents doesn't mark them seen.
+// shown on the right) as it is, so scrolling past agents doesn't mark them seen. The
+// review screen ignores it.
 func (m *Model) wheel(ms tea.Mouse) tea.Cmd {
 	step := map[tea.MouseButton]string{tea.MouseWheelUp: "up", tea.MouseWheelDown: "down"}[ms.Button]
 	if step == "" || m.review != nil {
