@@ -174,7 +174,7 @@ func TestReviewFromADescription(t *testing.T) {
 	m, _ := controlModel(t)
 	m.opt.Config.RepoRoots = []string{root}
 	m.readers.GH = fakeGH
-	m.opt.Adapters = []agent.Adapter{finder{answer: `Here you go: {"prs":[{"url":"https://github.com/acme/widget/pull/12","why":"sam posted it in #code-reviews"},{"url":"https://github.com/acme/widget/pull/9","why":"older"}],"note":""}`, tools: &tools, asked: &asked}}
+	m.opt.Adapters = []agent.Adapter{finder{answer: `Here you go: {"prs":[{"url":"https://github.com/acme/widget/pull/12","why":"sam posted it in #code-reviews"},{"url":"https://github.com/acme/widget/pull/9","why":"older"},{"url":"a/b#--web","why":"steered"},{"url":"https://example.slack.com/x","why":"not a PR"}],"note":""}`, tools: &tools, asked: &asked}}
 	m.Update(key("R"))
 	m.modal.text = "latest PR from sam in #code-reviews"
 	_, cmd := m.Update(key("enter"))

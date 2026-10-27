@@ -125,7 +125,10 @@ type Ref struct {
 func Lookup(ctx context.Context, run Runner, ref string) (Ref, error) {
 	ref = strings.TrimSpace(ref)
 	args := []string{"pr", "view", ref, "--json", "number,title,url"}
-	if repo, n, ok := strings.Cut(ref, "#"); ok && strings.Count(repo, "/") == 1 && !strings.Contains(ref, "://") {
+	if !IsRef(ref) {
+		return Ref{}, fmt.Errorf("%q isn't a pull request: paste its URL or owner/repo#N", ref)
+	}
+	if repo, n, ok := strings.Cut(ref, "#"); ok && !strings.Contains(ref, "://") {
 		args = []string{"pr", "view", n, "--repo", repo, "--json", "number,title,url"}
 	} else if !strings.HasPrefix(ref, "https://") {
 		return Ref{}, fmt.Errorf("%q isn't a pull request: paste its URL or owner/repo#N", ref)

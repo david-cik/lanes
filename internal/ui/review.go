@@ -236,7 +236,15 @@ func (m *Model) foundPRs(msg foundPRsMsg) tea.Cmd {
 	case msg.err != nil:
 		m.say("", msg.err)
 		return nil
-	case len(msg.prs) == 0:
+	}
+	// The answer came from an agent that read Slack: take only what's plainly a PR link.
+	msg.prs = slices.DeleteFunc(msg.prs, func(p struct {
+		URL string `json:"url"`
+		Why string `json:"why"`
+	}) bool {
+		return !strings.HasPrefix(p.URL, "https://") || !gh.IsRef(p.URL)
+	})
+	if len(msg.prs) == 0 {
 		m.say("", fmt.Errorf("no pull request found: %s", cmp.Or(msg.note, "nothing matched")))
 		return nil
 	}
