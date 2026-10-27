@@ -405,6 +405,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.trusted(msg)
 	case sentCheck:
 		return m, m.checkSent(msg)
+	case foundPRsMsg:
+		return m, m.foundPRs(msg)
 	case reviewFoundMsg:
 		return m, m.confirmReview(msg, nil)
 	case ctlTimeoutMsg:

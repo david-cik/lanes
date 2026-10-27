@@ -149,3 +149,21 @@ func Lookup(ctx context.Context, run Runner, ref string) (Ref, error) {
 	r.Repo = parts[1] + "/" + parts[2]
 	return r, nil
 }
+
+// IsRef says whether s names a pull request outright: a URL, or owner/name#N.
+func IsRef(s string) bool {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "https://") { // a pull request's page, not any link (a Slack message's is a place to look)
+		return !strings.ContainsAny(s, " \t") && strings.Contains(s, "/pull/")
+	}
+	repo, n, ok := strings.Cut(s, "#")
+	if !ok || strings.Count(repo, "/") != 1 || strings.ContainsAny(repo, " \t") || n == "" {
+		return false
+	}
+	for _, r := range n {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -149,5 +150,58 @@ func TestPasteIntoTextBoxes(t *testing.T) {
 	m.Update(tea.PasteMsg{Content: "fix it"})
 	if m.filter != "fix it" {
 		t.Fatalf("filter %q", m.filter)
+	}
+}
+
+// finder is an adapter that finds PRs (and records what it was allowed to use).
+type finder struct {
+	stopper
+	answer string
+	tools  *[]string
+	asked  *string
+}
+
+func (f finder) Name() string { return "finderbot" }
+func (f finder) Find(_ context.Context, prompt string, tools []string) (string, error) {
+	*f.tools, *f.asked = tools, prompt
+	return f.answer, nil
+}
+
+func TestReviewFromADescription(t *testing.T) {
+	root, _ := prRepo(t)
+	var tools []string
+	var asked string
+	m, _ := controlModel(t)
+	m.opt.Config.RepoRoots = []string{root}
+	m.readers.GH = fakeGH
+	m.opt.Adapters = []agent.Adapter{finder{answer: `Here you go: {"prs":[{"url":"https://github.com/acme/widget/pull/12","why":"sam posted it in #code-reviews"},{"url":"https://github.com/acme/widget/pull/9","why":"older"}],"note":""}`, tools: &tools, asked: &asked}}
+	m.Update(key("R"))
+	m.modal.text = "latest PR from sam in #code-reviews"
+	_, cmd := m.Update(key("enter"))
+	_, cmd = m.Update(cmd()) // foundPRsMsg: two → pick one
+	if !strings.Contains(asked, "latest PR from sam in #code-reviews") || !slices.Contains(tools, "Bash(gh pr view:*)") {
+		t.Fatalf("asked %q with %q", asked, tools)
+	}
+	if m.modal == nil || len(m.modal.items) != 2 || !strings.Contains(m.modal.items[0].label, "widget#12") {
+		t.Fatalf("%+v", m.modal)
+	}
+	_, cmd = m.Update(key("enter"))
+	m.Update(cmd()) // looked up: the start screen
+	if m.modal == nil || m.modal.title != "Review acme/widget#12?" {
+		t.Fatalf("%+v", m.modal)
+	}
+}
+
+func TestReviewFindsNothing(t *testing.T) {
+	var tools []string
+	var asked string
+	m, _ := controlModel(t)
+	m.opt.Adapters = []agent.Adapter{finder{answer: `{"prs":[],"note":"no PR from sam this week"}`, tools: &tools, asked: &asked}}
+	m.Update(key("R"))
+	m.modal.text = "sam's PR"
+	_, cmd := m.Update(key("enter"))
+	m.Update(cmd())
+	if m.modal != nil || !strings.Contains(m.notice, "no PR from sam this week") {
+		t.Fatalf("%+v %q", m.modal, m.notice)
 	}
 }

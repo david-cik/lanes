@@ -72,3 +72,15 @@ func TestLookup(t *testing.T) {
 		t.Fatal("not a PR")
 	}
 }
+
+func TestIsRef(t *testing.T) {
+	for s, want := range map[string]bool{
+		"https://github.com/acme/widget/pull/12": true, "acme/widget#12": true, " acme/widget#12 ": true,
+		"latest PR from sam in #code-reviews": false, "acme/widget#latest": false, "widget#12": false,
+		"https://example.slack.com/archives/C1/p123": false,
+	} {
+		if IsRef(s) != want {
+			t.Errorf("%q: %v", s, !want)
+		}
+	}
+}

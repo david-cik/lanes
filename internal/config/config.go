@@ -63,6 +63,16 @@ type ReviewConfig struct {
 	// Post: "ask" (it posts only after the user says yes), "never" (it drafts; the user
 	// posts), "auto" (it posts its review when done).
 	Post string `toml:"post"`
+	// FindTools are the only tools the agent that finds a PR from a description ("latest PR
+	// from sam in #code-reviews") may use: read-only ones. Rules as the tool writes them.
+	FindTools []string `toml:"find_tools"`
+}
+
+// DefaultFindTools read Slack (under the names Claude's Slack connections use) and GitHub.
+var DefaultFindTools = []string{
+	"mcp__claude_ai_Slack__slack_search_*", "mcp__claude_ai_Slack__slack_read_*",
+	"mcp__plugin_slack_slack__slack_search_*", "mcp__plugin_slack_slack__slack_read_*",
+	"Bash(gh pr view:*)", "Bash(gh pr list:*)", "Bash(gh search prs:*)",
 }
 
 // DefaultReviewPrompt is the review agent's first prompt unless review.prompt is set.
@@ -134,7 +144,7 @@ func Default() Config {
 		GroupByProject:   true,
 		DimInactive:      true,
 		Coordinator:      CoordinatorConfig{Start: "ask", Approve: "ask"},
-		Review:           ReviewConfig{Prompt: DefaultReviewPrompt, Post: "ask"},
+		Review:           ReviewConfig{Prompt: DefaultReviewPrompt, Post: "ask", FindTools: DefaultFindTools},
 	}
 }
 

@@ -116,6 +116,12 @@ type Ruler interface {
 	RuleArgs(allow, deny []string) []string
 }
 
+// Finder is implemented by adapters whose tool can look something up with tools (the
+// user's own, e.g. Slack and gh) and answer, allowed only the tools named.
+type Finder interface {
+	Find(ctx context.Context, prompt string, tools []string) (string, error)
+}
+
 // Isolator is implemented by adapters whose tool can ignore the settings a folder brings
 // with it (hooks that run commands, tools, permissions), for code someone else wrote.
 type Isolator interface {

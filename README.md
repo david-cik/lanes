@@ -266,7 +266,8 @@ worktree in the ticket's repo (the coordinator names the repo when lanes can't t
 
 ### Reviewing pull requests (`R`)
 
-`R` asks for a pull request (its URL, or `owner/repo#N`) and starts a review agent on it:
+`R` asks for a pull request (its URL, `owner/repo#N`, or where to find it, e.g. "latest PR
+from sam in #code-reviews") and starts a review agent on it:
 in a new worktree at the PR's head, in its repository's clone under `repo_roots`, with
 `review.prompt` as its first prompt. Review agents are listed under **Reviews**; `R` on a
 PR that's being reviewed shows the agent on it. The start screen shows the PR's title and
@@ -277,7 +278,14 @@ what the agent may post, and `t` picks another tool.
 agent = ""        # the tool reviews run in ("" = default_agent)
 prompt = "…"      # its first prompt: {url}, {repo} (owner/name), {number}, {title}, {post}
 post = "ask"      # "ask": posts only after you say so · "never": drafts, you post · "auto": posts when done
+find_tools = […]  # the only tools the PR finder may use (read-only by default)
 ```
+
+Given a description, a headless agent that can read your Slack and GitHub finds the PR
+first (Claude today, through your account's Slack connector): it may use only the tools in
+`review.find_tools` (by default Slack's search and read tools and `gh pr view`/`list`,
+`gh search prs`), none of your own settings load, and it saves nothing. You see what it
+found, and why, on the start screen; if several fit, you pick.
 
 The default prompt asks for bugs, risky changes, security problems, and missing tests,
 with style nits kept apart. `{post}` is what `review.post` allows; for Claude and Copilot

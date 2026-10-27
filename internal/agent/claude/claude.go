@@ -212,3 +212,33 @@ func (*Adapter) RuleArgs(allow, deny []string) []string {
 // IsolateArgs: only the user's own settings load (lanes' hooks come with --settings and
 // still do); the folder's .claude/settings*.json, and the hooks in them, don't.
 func (*Adapter) IsolateArgs() []string { return []string{"--setting-sources=user"} }
+
+// Find runs one headless Claude, in manual mode with only tools allowed: anything else is
+// refused, not asked about. None of the user's settings load (their own allow rules would
+// let more through, and their hooks would run); their account's connectors (claude.ai
+// Slack, …) and user MCP servers still do. Nothing is saved.
+func (a *Adapter) Find(ctx context.Context, prompt string, tools []string) (string, error) {
+	argv := []string{"-p", "--model", "sonnet", "--permission-mode=manual", "--setting-sources", "", "--no-session-persistence",
+		"--output-format", "json", "--allowedTools=" + strings.Join(tools, ","), prompt}
+	cmd := exec.CommandContext(ctx, "claude", argv...)
+	cmd.Env = CleanEnv(os.Environ())
+	if home, err := os.UserHomeDir(); err == nil {
+		cmd.Dir = home
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("claude: %w", err)
+	}
+	var r struct {
+		Result  string `json:"result"`
+		IsError bool   `json:"is_error"`
+	}
+	if json.Unmarshal(out, &r) != nil {
+		return string(out), nil
+	}
+	if r.IsError {
+		line, _, _ := strings.Cut(strings.TrimSpace(r.Result), "\n")
+		return "", fmt.Errorf("claude: %s", line)
+	}
+	return r.Result, nil
+}
